@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "shared"
+version = "0.1.0"
+description = "Package partagé pour le projet Vélib (Config, DB, Logger)"
+authors = [
+    {name = "John Doe", email = "ton.email@example.com"}
+]
+dependencies = [
+    "sqlalchemy>=2.0.0",
+    "pandas>=2.0,<3",
+    "psycopg2-binary",
+    "python-dotenv"
+]
+
+[tool.setuptools.packages.find]
+# Force setuptools à chercher le code dans le dossier python/
+where = ["."]
+include = ["python*"]

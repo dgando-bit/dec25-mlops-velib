@@ -18,12 +18,13 @@
 ├── main.py                 # Point d'entrée principal (orchestrateur)
 ├── Makefile                # Raccourcis de commandes (ex: make train, make deploy)
 ├── ml/                     # Le cœur du Machine Learning
-│   └── src/
-│       ├── Dockerfile      # Image pour l'entraînement ou le processing
-│       ├── features/       # Scripts de transformation de variables
-│       │   └── engineering.py
-│       ├── models/         # Sauvegarde locale des modèles (.pkl, .onnx)
-│       └── requirements.txt
+│   ├── src/
+│   │   ├── features/       # Scripts de transformation de variables
+│   │   │   └── engineering.py
+│	│	├── models/         # Entrainer les modeles
+│   │   └── main.py
+│   ├── Dockerfile      # Image pour l'entraînement ou le processing
+│   └── requirements.txt
 ├── mlflow/                 # Tracking des expériences et registre de modèles
 │   ├── Dockerfile
 │   └── scripts/            # Scripts pour initialiser la DB ou le stockage S3

@@ -1,0 +1,39 @@
+services:
+  # Tracking server pour tes expériences de ML
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.10.2
+    container_name: velib_mlflow
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./mlflow_data:/mlflow
+    command: mlflow server --host 0.0.0.0 --backend-store-uri sqlite:///mlflow/mlflow.db --default-artifact-root /mlflow/artifacts
+
+  # Module d'entraînement et processing
+  ml_module:
+    build:
+      context: .
+      dockerfile: ml/Dockerfile
+    container_name: velib_ml
+    depends_on:
+      - mlflow
+    environment:
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+    volumes:
+      - ./data:/app/data
+      - ./ml:/app/ml
+    ports:
+      - "8888:8888" # Pour accéder à Jupyter
+
+  # API de service (Inférence)
+  api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    container_name: velib_api
+    depends_on:
+      - ml_module
+    ports:
+      - "8000:8000"
+    environment:
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
