@@ -1,40 +1,137 @@
-# 👤 Auteur
-# 📦 Structure du projet
+# 🚲 Vélib MLOps
+
+Projet MLOps de prédiction de disponibilité des stations Vélib.
+
+## Stack
+
+| Service | Rôle | Port |
+|---|---|---|
+| PostgreSQL | Base de données MLflow | — |
+| MLflow | Tracking des expériences ML | `5001` |
+| API FastAPI | Endpoints d'inférence | `8000` |
+| Jupyter | Notebooks d'exploration | `8888` |
+
+---
+
+## 🚀 Démarrage rapide
+
+### 1. Prérequis
+
+- [Docker](https://www.docker.com/) >= 24
+- [Docker Compose](https://docs.docker.com/compose/) >= 2
+- `make`
+
+### 2. Configuration
+
+```bash
+cp .env.example .env
+```
+
+Édite `.env` et renseigne les valeurs :
+
+```bash
+MLFLOW_DB=mlflow
+MLFLOW_USER=mlflow
+MLFLOW_PASSWORD=ton_mot_de_passe
+MLFLOW_PORT=5001
+JUPYTER_TOKEN=ton_token_jupyter
+```
+
+### 3. Build & démarrage
+
+```bash
+# Vérifier la config et créer les dossiers
+make setup
+
+# Construire les images Docker
+make build
+
+# Démarrer tous les services
+make up
+```
+
+### 4. Vérifier que tout fonctionne
+
+```bash
+make health
+```
+
+Tu dois obtenir ✓ sur les 4 services.
+
+---
+
+## 🌐 Accès aux interfaces
+
+| Interface | URL |
+|---|---|
+| MLflow UI | http://localhost:5001 |
+| API docs (Swagger) | http://localhost:8000/docs |
+| Jupyter Lab | http://localhost:8888/lab?token=`<JUPYTER_TOKEN>` |
+
+---
+
+## 📋 Commandes utiles
+
+```bash
+# Démarrer uniquement l'infrastructure (DB + MLflow)
+make up-infra
+
+# Démarrer uniquement Jupyter
+make up-jupyter
+
+# Suivre les logs d'un service
+make logs-api
+make logs-mlflow
+make logs-jupyter
+
+# Ouvrir un shell dans un conteneur
+make shell-api
+make shell-ml
+
+# Lancer un entraînement
+make train
+
+# Arrêter tous les services
+make down
+
+# Voir toutes les commandes disponibles
+make help
+```
+
+---
+
+## 🗂️ Structure du projet
+
 ```
 .
-├── api/                    # Service de prédiction (ex: FastAPI ou Flask)
-│   ├── Dockerfile          # Image pour exposer le modèle via une API
-│   └── requirements.txt    # Dépendances spécifiques au service web
-├── data/                   # Gestion des données (souvent dans le .gitignore)
-│   ├── processed/          # Données nettoyées prêtes pour l'entraînement
-│   └── raw/                # Données brutes récupérées de l'API Vélib
-├── deployments/            # Infrastructure et Ops
-│   ├── nginx/              # Serveur proxy (sécurité, SSL, routage)
-│   │   ├── certs/          # Certificats HTTPS
-│   │   └── Dockerfile
-│   └── prometheus/         # Monitoring des métriques (latence, erreurs)
-│       └── prometheus.yml
-├── docker-compose.yml      # Orchestration de tous les services en local
-├── main.py                 # Point d'entrée principal (orchestrateur)
-├── Makefile                # Raccourcis de commandes (ex: make train, make deploy)
-├── ml/                     # Le cœur du Machine Learning
-│   ├── src/
-│   │   ├── features/       # Scripts de transformation de variables
-│   │   │   └── engineering.py
-│	│	├── models/         # Entrainer les modeles
-│   │   └── main.py
-│   ├── Dockerfile          # Image pour l'entraînement ou le processing
-│   └── requirements.txt
-├── mlflow/                 # Tracking des expériences et registre de modèles
-│   ├── Dockerfile
-│   └── scripts/            # Scripts pour initialiser la DB ou le stockage S3
-├── README.md               # Documentation du projet
-└── shared/                 # Code partagé entre l'API et le module ML
-    ├── pyproject.toml      # Configuration des outils (Black, Isort, Flake8)
-    └── python/
-        ├── config.py       # Variables d'environnement (API keys, ports)
-        ├── logger.py       # Configuration centralisée des logs
-        └── utils/
-            └── helpers.py  # Fonctions utilitaires génériques
-     
+├── api/              # API FastAPI (inférence)
+├── ml/               # Module ML (entraînement, features)
+│   ├── notebooks/    # Notebooks Jupyter
+│   └── src/
+│       ├── features/ # Feature engineering
+│       └── models/   # Modèles entraînés
+├── mlflow/           # Serveur MLflow
+├── shared/           # Package Python partagé (config, logger, utils)
+├── data/
+│   ├── raw/          # Données brutes
+│   └── processed/    # Données transformées
+├── deployments/      # Nginx, Prometheus
+├── docker-compose.yml
+├── Makefile
+└── .env.example
+```
+
+---
+
+## 🧹 Nettoyage
+
+```bash
+# Arrêter et supprimer les conteneurs
+make down
+
+# Supprimer aussi les images locales
+make clean
+
+# Supprimer également les volumes (⚠️ perte des données MLflow)
+make clean-volumes
 ```
