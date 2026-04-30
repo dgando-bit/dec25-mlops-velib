@@ -1,0 +1,6 @@
+pandas>=2.0,<3
+scikit-learn>=1.6,<2
+mlflow>=2.10,<3
+dvc
+joblib
+requests

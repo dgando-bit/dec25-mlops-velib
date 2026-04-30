@@ -1,39 +1,116 @@
-services:
-  # Tracking server pour tes expériences de ML
-  mlflow:
-    image: ghcr.io/mlflow/mlflow:v2.10.2
-    container_name: velib_mlflow
-    ports:
-      - "5000:5000"
-    volumes:
-      - ./mlflow_data:/mlflow
-    command: mlflow server --host 0.0.0.0 --backend-store-uri sqlite:///mlflow/mlflow.db --default-artifact-root /mlflow/artifacts
+networks:
+  mlops-net:
+    driver: bridge
 
-  # Module d'entraînement et processing
-  ml_module:
+services:
+  mlflow-db:
+    container_name: dec25-mlops-mlflow-db
+    image: postgres:15
+    env_file: .env
+    environment:
+      POSTGRES_DB: ${MLFLOW_DB}
+      POSTGRES_USER: ${MLFLOW_USER}
+      POSTGRES_PASSWORD: ${MLFLOW_PASSWORD}
+    volumes:
+      - mlflow_db_data:/var/lib/postgresql/data
+    networks:
+      - mlops-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${MLFLOW_USER} -d ${MLFLOW_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  mlflow-server:
+    container_name: dec25-mlops-mlflow-server
+    build:
+      context: .
+      dockerfile: mlflow/Dockerfile
+    ports:
+      - "${MLFLOW_PORT}:5000"
+    env_file:
+      - .env
+    environment:
+      MLFLOW_BACKEND_STORE_URI: postgresql://${MLFLOW_USER}:${MLFLOW_PASSWORD}@mlflow-db/${MLFLOW_DB}
+      MLFLOW_DEFAULT_ARTIFACT_ROOT: /app/mlflow/artifacts
+    depends_on:
+      mlflow-db:
+        condition: service_healthy
+    volumes:
+      - ./mlflow/artifacts:/app/mlflow/artifacts
+    networks:
+      - mlops-net
+    command: >
+      mlflow server
+      --host 0.0.0.0
+      --port 5000
+      --backend-store-uri postgresql://${MLFLOW_USER}:${MLFLOW_PASSWORD}@mlflow-db/${MLFLOW_DB}
+      --default-artifact-root /app/mlflow/artifacts
+
+  ml_training:
     build:
       context: .
       dockerfile: ml/Dockerfile
     container_name: velib_ml
-    depends_on:
-      - mlflow
     environment:
-      - MLFLOW_TRACKING_URI=http://mlflow:5000
+      MLFLOW_TRACKING_URI: http://mlflow-server:5000
     volumes:
-      - ./data:/app/data
       - ./ml:/app/ml
-    ports:
-      - "8888:8888" # Pour accéder à Jupyter
+      - ./data:/app/data
+      - ./shared:/app/shared
+      - ./mlflow/artifacts:/mlflow/artifacts
+    networks:
+      - mlops-net
+    depends_on:
+      - mlflow-server
+    command: python ml/src/main.py
 
-  # API de service (Inférence)
+  jupyter-service:
+    container_name: dec25-mlops-jupyter
+    build:
+      context: .
+      dockerfile: ml/Dockerfile
+    ports:
+      - "8888:8888"
+    env_file:
+      - .env
+    environment:
+      JUPYTER_TOKEN: ${JUPYTER_TOKEN}
+      MLFLOW_TRACKING_URI: http://mlflow-server:5000
+      JUPYTER_ENABLE_LAB: "yes"
+    volumes:
+      - ./ml:/app/ml
+      - ./shared:/app/shared
+      - ./ml/notebooks:/app/notebooks
+      - ./data:/app/data
+    user: "1000:1000"
+    networks:
+      - mlops-net
+    command: >
+      jupyter lab
+      --ip=0.0.0.0
+      --port=8888
+      --no-browser
+      --notebook-dir=/app
+      --IdentityProvider.token=${JUPYTER_TOKEN}
+      --ServerApp.disable_check_xsrf=True
+    restart: unless-stopped
+
   api:
     build:
       context: .
       dockerfile: api/Dockerfile
     container_name: velib_api
     depends_on:
-      - ml_module
+      - mlflow-server
     ports:
       - "8000:8000"
     environment:
-      - MLFLOW_TRACKING_URI=http://mlflow:5000
+      MLFLOW_TRACKING_URI: http://mlflow-server:5000
+    volumes:
+      - ./mlflow/artifacts:/mlflow/artifacts
+    networks:
+      - mlops-net
+
+volumes:
+  mlflow_db_data:

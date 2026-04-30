@@ -23,7 +23,7 @@
 │   │   │   └── engineering.py
 │	│	├── models/         # Entrainer les modeles
 │   │   └── main.py
-│   ├── Dockerfile      # Image pour l'entraînement ou le processing
+│   ├── Dockerfile          # Image pour l'entraînement ou le processing
 │   └── requirements.txt
 ├── mlflow/                 # Tracking des expériences et registre de modèles
 │   ├── Dockerfile
