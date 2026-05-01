@@ -83,7 +83,7 @@ help:
 	@echo "  $(GREEN)make dvc-pull$(RESET)         Récupérer les données depuis DagsHub"
 	@echo "  $(GREEN)make dvc-push$(RESET)         Envoyer les données vers DagsHub"
 	@echo "  $(GREEN)make dvc-status$(RESET)       Vérifier l'état des données DVC"
-	@echo "  $(GREEN)make dvc-add$(RESET)          Tracker les changements dans data/raw/"
+	@echo "  $(GREEN)make dvc-add$(RESET)          Tracker les changements dans data/raw/ et data/processed/"
 	@echo "  $(GREEN)make pipeline$(RESET)         Exécuter le pipeline DVC complet"
 	@echo ""
 	@echo "$(BOLD)🐚 Shells$(RESET)"
@@ -321,10 +321,10 @@ dvc-status:
 	dvc status
 
 dvc-add:
-	@echo "$(CYAN)→ Tracking des changements dans data/raw/...$(RESET)"
-	dvc add data/raw/
+	@echo "$(CYAN)→ Tracking des changements dans data/...$(RESET)"
+	dvc add data/raw/ data/processed/
 	@echo "$(GREEN)✓ Fichiers trackés$(RESET)"
-	@echo "$(YELLOW)  → N'oublie pas : git add data/raw.dvc && git commit$(RESET)"
+	@echo "$(YELLOW)  → N'oublie pas : git add data/raw.dvc data/processed.dvc && git commit$(RESET)"
 
 pipeline:
 	@echo "$(CYAN)→ Exécution du pipeline DVC...$(RESET)"
