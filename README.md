@@ -104,21 +104,80 @@ make help
 
 ```
 .
-├── api/              # API FastAPI (inférence)
-├── ml/               # Module ML (entraînement, features)
-│   ├── notebooks/    # Notebooks Jupyter
-│   └── src/
-│       ├── features/ # Feature engineering
-│       └── models/   # Modèles entraînés
-├── mlflow/           # Serveur MLflow
-├── shared/           # Package Python partagé (config, logger, utils)
-├── data/
-│   ├── raw/          # Données brutes
-│   └── processed/    # Données transformées
-├── deployments/      # Nginx, Prometheus
-├── docker-compose.yml
 ├── Makefile
-└── .env.example
+├── README.md
+├── docker-compose.yml
+├── api/                          # API FastAPI (inférence)
+│   ├── Dockerfile
+│   ├── main.py
+│   └── requirements.txt
+├── ml/                           # Module ML
+│   ├── Dockerfile
+│   ├── requirements.txt
+│   ├── notebooks/                # Notebooks Jupyter d'exploration
+│   └── src/
+│       ├── data/
+│       │   └── make_dataset.py   # Ingestion et nettoyage
+│       ├── features/
+│       │   └── build_features.py # Feature engineering
+│       ├── models/
+│       │   ├── train_model.py    # Entraînement
+│       │   └── predict_model.py  # Inférence
+│       └── main.py
+├── mlflow/                       # Serveur de tracking MLflow
+│   ├── Dockerfile
+│   ├── requirements.txt
+│   └── artifacts/                # Artefacts modèles (ignoré par Git)
+├── shared/                       # Package Python partagé
+│   ├── pyproject.toml
+│   └── shared/
+│       ├── config.py
+│       ├── logger.py
+│       └── utils/
+│           └── helpers.py
+├── data/                         # Données versionnées par DVC
+│   ├── raw/                      # Données brutes (ignoré par Git)
+│   │   └── dataset_velib_300326.csv
+│   ├── raw.dvc                   # Métadonnées DVC (suivi par Git)
+│   ├── processed/                # Données transformées (ignoré par Git)
+│   │   ├── train_preprocessed.csv
+│   │   └── test_preprocessed.csv
+│   └── processed.dvc             # Métadonnées DVC (suivi par Git)
+└── deployments/                  # Configuration infrastructure
+    ├── nginx/
+    └── prometheus/
+        └── prometheus.yml
+```
+
+> Les dossiers `data/raw/` et `data/processed/` sont ignorés par Git et versionnés via **DVC** sur DagsHub.
+
+---
+
+## 📦 Données (DVC)
+
+Les données sont versionnées avec [DVC](https://dvc.org) et stockées sur [DagsHub](https://dagshub.com).
+
+### Premier setup (nouveaux membres)
+
+```bash
+# Configurer les credentials DagsHub
+dvc remote modify origin --local auth basic
+dvc remote modify origin --local user TON_USERNAME
+dvc remote modify origin --local password TON_TOKEN_DAGSHUB
+
+# Récupérer les données
+make dvc-pull
+```
+
+### Ajouter de nouvelles données
+
+```bash
+# Copier les fichiers dans data/raw/ ou data/processed/
+make dvc-add
+git add data/raw.dvc data/processed.dvc
+git commit -m "data: description du changement"
+make dvc-push
+git push
 ```
 
 ---
