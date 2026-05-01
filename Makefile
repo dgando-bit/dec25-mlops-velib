@@ -33,7 +33,8 @@ SERVICES := mlflow-db mlflow-server ml_training jupyter-service api
         train \
         clean clean-volumes clean-all \
         shell-api shell-ml shell-jupyter \
-        check-env setup
+        check-env setup \
+        dvc-pull dvc-push dvc-status dvc-add pipeline
 
 
 # =============================================================================
@@ -77,6 +78,13 @@ help:
 	@echo ""
 	@echo "$(BOLD)🤖 ML$(RESET)"
 	@echo "  $(GREEN)make train$(RESET)            Lancer un job d'entraînement"
+	@echo ""
+	@echo "$(BOLD)📦 DVC$(RESET)"
+	@echo "  $(GREEN)make dvc-pull$(RESET)         Récupérer les données depuis DagsHub"
+	@echo "  $(GREEN)make dvc-push$(RESET)         Envoyer les données vers DagsHub"
+	@echo "  $(GREEN)make dvc-status$(RESET)       Vérifier l'état des données DVC"
+	@echo "  $(GREEN)make dvc-add$(RESET)          Tracker les changements dans data/raw/"
+	@echo "  $(GREEN)make pipeline$(RESET)         Exécuter le pipeline DVC complet"
 	@echo ""
 	@echo "$(BOLD)🐚 Shells$(RESET)"
 	@echo "  $(GREEN)make shell-api$(RESET)        Shell interactif dans le conteneur API"
@@ -292,6 +300,36 @@ train:
 	@echo "$(CYAN)→ Lancement d'un job d'entraînement...$(RESET)"
 	$(COMPOSE) -f $(COMPOSE_FILE) run --rm ml_training python ml/src/main.py
 	@echo "$(GREEN)✓ Entraînement terminé$(RESET)"
+
+
+# =============================================================================
+# DVC
+# =============================================================================
+
+dvc-pull:
+	@echo "$(CYAN)→ Récupération des données depuis DagsHub...$(RESET)"
+	dvc pull
+	@echo "$(GREEN)✓ Données récupérées$(RESET)"
+
+dvc-push:
+	@echo "$(CYAN)→ Push des données vers DagsHub...$(RESET)"
+	dvc push
+	@echo "$(GREEN)✓ Données envoyées$(RESET)"
+
+dvc-status:
+	@echo "$(CYAN)→ État des données DVC...$(RESET)"
+	dvc status
+
+dvc-add:
+	@echo "$(CYAN)→ Tracking des changements dans data/raw/...$(RESET)"
+	dvc add data/raw/
+	@echo "$(GREEN)✓ Fichiers trackés$(RESET)"
+	@echo "$(YELLOW)  → N'oublie pas : git add data/raw.dvc && git commit$(RESET)"
+
+pipeline:
+	@echo "$(CYAN)→ Exécution du pipeline DVC...$(RESET)"
+	$(COMPOSE) -f $(COMPOSE_FILE) run --rm ml_training dvc repro
+	@echo "$(GREEN)✓ Pipeline terminé$(RESET)"
 
 
 # =============================================================================
