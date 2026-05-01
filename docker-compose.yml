@@ -48,10 +48,11 @@ services:
       --default-artifact-root /app/mlflow/artifacts
 
   ml_training:
+    container_name: velib_ml
     build:
       context: .
       dockerfile: ml/Dockerfile
-    container_name: velib_ml
+      target: training
     environment:
       MLFLOW_TRACKING_URI: http://mlflow-server:5000
     volumes:
@@ -70,6 +71,7 @@ services:
     build:
       context: .
       dockerfile: ml/Dockerfile
+      target: jupyter
     ports:
       - "8888:8888"
     env_file:
