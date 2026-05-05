@@ -1,0 +1,82 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# dvc.yaml — Pipeline ML reproductible du projet Vélib'
+# ─────────────────────────────────────────────────────────────────────────────
+# Quatre stages enchaînés :
+#   1. load_from_hf     ✅ ACTIF — télécharge le dataset HF et produit un parquet brut
+#   2. make_dataset     ✅ ACTIF — nettoie, filtre, calcule la target (taux)
+#   3. dataviz          ✅ ACTIF — produit le rapport HTML d'exploration visuelle
+#   4. build_features   ⏳ STUB  — feature engineering + split train/test (à venir)
+#
+# Lancement :
+#   dvc repro                       # (re-)exécute uniquement les stages dont les inputs ont changé
+#   dvc repro load_from_hf          # force la ré-exécution d'un stage particulier
+#   dvc repro make_dataset
+#   dvc repro dataviz
+#   dvc dag                         # visualise le DAG
+#
+# Versioning :
+#   chaque sortie (outs) génère un fichier .dvc compagnon versionné Git
+#   les vrais .parquet sont poussés sur le remote DagsHub via `dvc push`
+# ─────────────────────────────────────────────────────────────────────────────
+
+stages:
+
+  load_from_hf:
+    desc: "Télécharge tous les fichiers raw depuis HuggingFace et produit un parquet brut consolidé."
+    cmd: python -m ml.src.data.load_from_hf
+    deps:
+      - ml/src/data/load_from_hf.py
+      - shared/shared/config.py
+      - shared/shared/logger.py
+    params:
+      - .env:
+          - HF_REPO
+          - HF_FILE_PREFIX
+          - HF_FORCE_DOWNLOAD
+    outs:
+      - data/raw/velib_snapshot_latest.parquet
+
+  make_dataset:
+    desc: "Nettoie le snapshot brut : coercition booléens, calcul taux, filtres qualité, exclusion stations sans variance."
+    cmd: python -m ml.src.data.make_dataset
+    deps:
+      - ml/src/data/make_dataset.py
+      - shared/shared/config.py
+      - shared/shared/logger.py
+      - shared/shared/utils/data_cleaning.py
+      - data/raw/velib_snapshot_latest.parquet
+    params:
+      - .env:
+          - MIN_VARIANCE
+    outs:
+      - data/interim/velib_cleaned_latest.parquet
+
+  dataviz:
+    desc: "Produit le rapport HTML d'exploration visuelle (7 graphes Plotly interactifs)."
+    cmd: python -m ml.src.visualization.dataviz
+    deps:
+      - ml/src/visualization/dataviz.py
+      - shared/shared/config.py
+      - shared/shared/logger.py
+      - shared/shared/utils/data_cleaning.py
+      - data/raw/velib_snapshot_latest.parquet
+      - data/interim/velib_cleaned_latest.parquet
+    outs:
+      - data/outputs/plots/dataviz_report.html:
+          cache: false                # le HTML est régénéré à la demande, pas besoin de le pousser
+
+  build_features:
+    desc: "STUB — sera implémenté à l'étape suivante. Feature engineering + split train/test."
+    cmd: |
+      echo "TODO : implémenter ml/src/features/build_features.py"
+      echo "Inputs  : data/interim/velib_cleaned_latest.parquet"
+      echo "Outputs : data/processed/train_preprocessed.parquet"
+      echo "          data/processed/test_preprocessed.parquet"
+      exit 1
+    deps:
+      - data/interim/velib_cleaned_latest.parquet
+      # - ml/src/features/build_features.py   # À DÉCOMMENTER quand le fichier existera
+      - shared/shared/config.py
+    # outs:
+    #   - data/processed/train_preprocessed.parquet
+    #   - data/processed/test_preprocessed.parquet

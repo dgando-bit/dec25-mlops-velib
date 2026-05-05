@@ -1,15 +1,35 @@
 [build-system]
-requires = ["setuptools>=61", "wheel"]
+requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "shared"
 version = "0.1.0"
-description = "Package partagé pour le projet Vélib"
-requires-python = ">=3.12"
-dependencies = [
-    "sqlalchemy>=2.0.0",
-    "pandas>=2.0,<3",
-    "psycopg2-binary",
-    "python-dotenv"
+description = "Code partagé entre les services du projet Vélib' (config, logger, utils)."
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+    { name = "Equipe Vélib MLOps" },
 ]
+dependencies = [
+    "pydantic>=2.6,<3",
+    "pydantic-settings>=2.2,<3",
+    "python-dotenv>=1.0,<2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0,<9",
+    "ruff>=0.4,<1",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["shared*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]

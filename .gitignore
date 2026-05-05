@@ -1,14 +1,48 @@
-.idea
+# ─── Secrets ─────────────────────────────────────────────────────────────────
 .env
+.env.local
+*.pem
+*.key
+
+# ─── Données (versionnées par DVC, pas par Git) ──────────────────────────────
+data/raw/*.parquet
+data/raw/*.csv
+data/raw/.hf_cache/
+data/interim/*.parquet
+data/processed/*.parquet
+data/outputs/
+
+# Le snapshot log est court, on PEUT le versionner si on veut une trace Git
+# (à toi de décider, ligne suivante à commenter ou pas)
+# data/raw/.snapshots.log
+
+# ─── DVC interne ────────────────────────────────────────────────────────────
+.dvc/cache/
+.dvc/tmp/
+.dvc/config.local
+
+# ─── Python ─────────────────────────────────────────────────────────────────
 __pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
 
-# VS Code
+# ─── ML ─────────────────────────────────────────────────────────────────────
+mlruns/
+mlartifacts/
+*.joblib
+*.pkl
+mlflow.db
+
+# ─── IDE ────────────────────────────────────────────────────────────────────
 .vscode/
-
-# Mac OS-specific storage files
+.idea/
+*.swp
 .DS_Store
-
-# data/raw
-# data/processed
-
-mlflow/artifacts
