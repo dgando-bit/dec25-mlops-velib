@@ -30,11 +30,6 @@ stages:
       - ml/src/data/load_from_hf.py
       - shared/shared/config.py
       - shared/shared/logger.py
-    params:
-      - .env:
-          - HF_REPO
-          - HF_FILE_PREFIX
-          - HF_FORCE_DOWNLOAD
     outs:
       - data/raw/velib_snapshot_latest.parquet
 
@@ -47,9 +42,6 @@ stages:
       - shared/shared/logger.py
       - shared/shared/utils/data_cleaning.py
       - data/raw/velib_snapshot_latest.parquet
-    params:
-      - .env:
-          - MIN_VARIANCE
     outs:
       - data/interim/velib_cleaned_latest.parquet
 
@@ -77,10 +69,6 @@ stages:
       - shared/shared/logger.py
       - shared/shared/utils/data_cleaning.py
       - data/interim/velib_cleaned_latest.parquet
-    params:
-      - .env:
-          - TEST_SIZE
-          - RANDOM_STATE
     outs:
       - data/processed/train_preprocessed.parquet
       - data/processed/test_preprocessed.parquet
@@ -96,9 +84,6 @@ stages:
       - shared/shared/logger.py
       - data/processed/train_preprocessed.parquet
       - data/processed/test_preprocessed.parquet
-    params:
-      - .env:
-          - RANDOM_STATE
     outs:
       - mlflow.db
       - mlartifacts

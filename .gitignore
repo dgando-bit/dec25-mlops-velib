@@ -57,3 +57,5 @@ mlflow.db
 .idea/
 *.swp
 .DS_Store
+/mlartifacts
+/mlruns
