@@ -10,11 +10,22 @@ data/raw/*.csv
 data/raw/.hf_cache/
 data/interim/*.parquet
 data/processed/*.parquet
-data/outputs/
+data/outputs/*
 
-# Le snapshot log est court, on PEUT le versionner si on veut une trace Git
-# (à toi de décider, ligne suivante à commenter ou pas)
-# data/raw/.snapshots.log
+# Exceptions : metrics et plots (versionnés Git pour DVC plots/metrics + diff PR)
+!data/outputs/metrics.json
+!data/outputs/feature_importance.png
+!data/outputs/residuals_distribution.png
+!data/outputs/predictions_vs_actual.png
+
+# Logs d'exécution (regénérés à chaque run)
+data/raw/.snapshots.log
+data/interim/.cleaning.log
+data/processed/.features.log
+data/processed/build_metadata.json
+data/processed/stations_geo.parquet
+
+
 
 # ─── DVC interne ────────────────────────────────────────────────────────────
 .dvc/cache/

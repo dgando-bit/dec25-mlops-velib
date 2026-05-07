@@ -106,7 +106,17 @@ def render_temporal_coverage(df_raw: pd.DataFrame) -> go.Figure:
     Utilise le snapshot **brut** (avant nettoyage) parce que ce graphe sert
     à détecter les trous de collecte — les filtres du nettoyage masqueraient
     des anomalies.
+
+    Choix de visualisation (graphique gauche) :
+        - mode lines+markers (pas d'aire pleine qui écraserait la lecture)
+        - axe Y recadré sur la plage utile pour distinguer les variations
+          (les valeurs vivent dans [min, max] qui peuvent être très resserrées
+          quand la collecte est régulière, ex. 265k-435k sur 5M lignes)
+        - ligne de référence "max théorique" = n_stations × 288 ticks/jour
+          (288 = 24h × 60min ÷ 5min) pour situer la qualité de la collecte
+        - annotation explicite signalant l'échelle adaptée
     """
+    # ── Agrégation par jour calendaire ────────────────────────────────────
     daily = df_raw.groupby(df_raw["datetime"].dt.date).size().reset_index(
         name="count"
     )
@@ -116,6 +126,19 @@ def render_temporal_coverage(df_raw: pd.DataFrame) -> go.Figure:
 
     n_days = (df_raw["datetime"].max() - df_raw["datetime"].min()).days
     n_weeks = round(n_days / 7, 1)
+
+    # ── Calcul dynamique du max théorique ─────────────────────────────────
+    # 288 = 24h × 60min ÷ 5min de fréquence de collecte
+    n_stations = int(df_raw["station_id"].nunique())
+    ticks_per_day = 24 * 60 // 5
+    max_theoretical = n_stations * ticks_per_day
+
+    # ── Plage Y recadrée sur la zone utile (avec marges visuelles) ────────
+    y_min_data = int(daily["count"].min())
+    y_max_data = int(daily["count"].max())
+    # On laisse la ligne max_theoretical visible si elle dépasse y_max_data
+    y_axis_max = max(y_max_data, max_theoretical) * 1.05
+    y_axis_min = y_min_data * 0.92
 
     fig = make_subplots(
         rows=1, cols=2,
@@ -127,21 +150,48 @@ def render_temporal_coverage(df_raw: pd.DataFrame) -> go.Figure:
         horizontal_spacing=0.10,
     )
 
-    # Col 1 : aire temporelle
+    # ── Col 1 : ligne + marqueurs (pas d'aire) ────────────────────────────
     fig.add_trace(
         go.Scatter(
             x=daily["date"], y=daily["count"],
-            mode="lines",
-            fill="tozeroy",
-            line=dict(color=COLORS["info"], width=1.5),
-            fillcolor="rgba(25, 118, 210, 0.25)",
+            mode="lines+markers",
+            line=dict(color=COLORS["info"], width=2),
+            marker=dict(size=8, color=COLORS["info"],
+                        line=dict(color="white", width=1)),
             name="Relevés/jour",
             hovertemplate="<b>%{x|%a %d %b}</b><br>%{y:,} relevés<extra></extra>",
         ),
         row=1, col=1,
     )
 
-    # Col 2 : barres par jour de semaine
+    # ── Ligne de référence "max théorique" ────────────────────────────────
+    fig.add_hline(
+        y=max_theoretical,
+        line=dict(color=COLORS["success"], dash="dash", width=1.5),
+        annotation_text=(
+            f"Max théorique : {max_theoretical:,} "
+            f"({n_stations} stations × {ticks_per_day} ticks/jour)"
+        ),
+        annotation_position="top right",
+        annotation=dict(font=dict(size=10, color=COLORS["success"])),
+        row=1, col=1,
+    )
+
+    # ── Annotation signalant l'échelle adaptée (transparence pour le lecteur)
+    fig.add_annotation(
+        text=f"⚠ Échelle Y adaptée à la plage observée (début à {y_axis_min:,.0f})",
+        xref="x domain", yref="y domain",
+        x=0.02, y=0.04,
+        showarrow=False,
+        font=dict(size=10, color=COLORS["neutral"], family="Arial"),
+        bgcolor="rgba(255, 255, 255, 0.8)",
+        bordercolor=COLORS["neutral"],
+        borderwidth=1,
+        borderpad=4,
+        row=1, col=1,
+    )
+
+    # ── Col 2 : barres par jour de semaine ────────────────────────────────
     fig.add_trace(
         go.Bar(
             x=DAY_FR,
@@ -158,7 +208,11 @@ def render_temporal_coverage(df_raw: pd.DataFrame) -> go.Figure:
     )
 
     fig.update_xaxes(title_text="Date", row=1, col=1)
-    fig.update_yaxes(title_text="Nb relevés", row=1, col=1, tickformat=",")
+    fig.update_yaxes(
+        title_text="Nb relevés", row=1, col=1,
+        tickformat=",",
+        range=[y_axis_min, y_axis_max],
+    )
     fig.update_xaxes(title_text="Jour", row=1, col=2)
     fig.update_yaxes(title_text="Nb relevés", row=1, col=2, tickformat=",")
 

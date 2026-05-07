@@ -57,7 +57,7 @@ class Settings(BaseSettings):
     hf_token: SecretStr | None = Field(
         default=None,
         description="Token HF (Read suffit si le repo est public). "
-                    "Lu via env HF_TOKEN",
+                    "Lu via env HF_TOKEN, jamais hardcodé.",
     )
     hf_file_prefix: str = Field(
         default="dataset_velib_raw_",
@@ -126,6 +126,19 @@ class Settings(BaseSettings):
         ge=0.0,
         description="Variance minimale du taux par station "
                     "(filtre les stations 'plates' inentraînables).",
+    )
+    station_trend_min_days_for_month: int = Field(
+        default=90,
+        ge=1,
+        description=(
+            "Seuil (en jours d'historique train) à partir duquel la dimension "
+            "'month' est ajoutée à la clé d'agrégation de station_trend_avg. "
+            "En dessous : clé courte (station × dow × hour). "
+            "Au-dessus : clé fine (station × dow × hour × month). "
+            "Justification : 90 jours = ~3 mois distincts × ~12 occurrences "
+            "par combinaison, pour que l'agrégation par mois soit "
+            "statistiquement défendable."
+        ),
     )
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -248,7 +261,7 @@ class Settings(BaseSettings):
         return self.hf_token.get_secret_value() if self.hf_token else None
 
     def ensure_directories(self) -> None:
-        """Crée tous les dossiers data manquants"""
+        """Crée tous les dossiers data manquants (idempotent)."""
         for d in (
             self.raw_data_dir,
             self.interim_data_dir,
