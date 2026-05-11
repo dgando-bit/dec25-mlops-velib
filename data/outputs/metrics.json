@@ -1,0 +1,12 @@
+{
+  "run_id": "6a9e0bf50616487abb11db1a5dc31469",
+  "model_name": "velib_fill_rate_predictor",
+  "timestamp": "2026-05-07T06:19:13+00:00",
+  "residual_mae": 14.602978680773958,
+  "residual_rmse": 20.08481929259735,
+  "residual_r2": 0.4634747842518535,
+  "taux_mae": 14.59088316242085,
+  "taux_rmse": 20.081732116627638,
+  "taux_r2": 0.5249796715633674,
+  "taux_mape_pct": 59.40278172398641
+}

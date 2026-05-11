@@ -1,0 +1,100 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# dvc.yaml — Pipeline ML reproductible du projet Vélib'
+# ─────────────────────────────────────────────────────────────────────────────
+# Cinq stages enchaînés :
+#   1. load_from_hf     ✅ ACTIF — télécharge le dataset HF et produit un parquet brut
+#   2. make_dataset     ✅ ACTIF — nettoie, filtre, calcule la target (taux)
+#   3. dataviz          ✅ ACTIF — produit le rapport HTML d'exploration visuelle
+#   4. build_features   ✅ ACTIF — feature engineering + split train/test
+#   5. train_model      ✅ ACTIF — XGBoost + MLflow + promotion alias 'staging'
+#
+# Lancement :
+#   dvc repro                       # (re-)exécute uniquement les stages dont les inputs ont changé
+#   dvc repro <stage_name>          # force la ré-exécution d'un stage particulier
+#   dvc dag                         # visualise le DAG
+#   dvc metrics show                # affiche les métriques du modèle
+#   dvc plots show                  # ouvre les plots dans un viewer
+#
+# Versioning :
+#   chaque sortie (outs) génère un fichier .dvc compagnon versionné Git
+#   les vrais .parquet sont poussés sur le remote DagsHub via `dvc push`
+#   metrics et plots sont versionnés sans cache (lisibles en clair dans Git)
+# ─────────────────────────────────────────────────────────────────────────────
+
+stages:
+
+  load_from_hf:
+    desc: "Télécharge tous les fichiers raw depuis HuggingFace et produit un parquet brut consolidé."
+    cmd: python -m ml.src.data.load_from_hf
+    deps:
+      - ml/src/data/load_from_hf.py
+      - shared/shared/config.py
+      - shared/shared/logger.py
+    outs:
+      - data/raw/velib_snapshot_latest.parquet
+
+  make_dataset:
+    desc: "Nettoie le snapshot brut : coercition booléens, calcul taux, filtres qualité, exclusion stations sans variance."
+    cmd: python -m ml.src.data.make_dataset
+    deps:
+      - ml/src/data/make_dataset.py
+      - shared/shared/config.py
+      - shared/shared/logger.py
+      - shared/shared/utils/data_cleaning.py
+      - data/raw/velib_snapshot_latest.parquet
+    outs:
+      - data/interim/velib_cleaned_latest.parquet
+
+  dataviz:
+    desc: "Produit le rapport HTML d'exploration visuelle (7 graphes Plotly interactifs)."
+    cmd: python -m ml.src.visualization.dataviz
+    deps:
+      - ml/src/visualization/dataviz.py
+      - shared/shared/config.py
+      - shared/shared/logger.py
+      - shared/shared/utils/data_cleaning.py
+      - data/raw/velib_snapshot_latest.parquet
+      - data/interim/velib_cleaned_latest.parquet
+    outs:
+      - data/outputs/plots/dataviz_report.html:
+          cache: false                # le HTML est régénéré à la demande, pas besoin de le pousser
+
+  build_features:
+    desc: "Feature engineering complet : temporel, météo, lags, station_trend_avg, cible résiduelle, split train/test."
+    cmd: python -m ml.src.features.build_features
+    deps:
+      - ml/src/features/build_features.py
+      - ml/src/features/_helpers.py
+      - shared/shared/config.py
+      - shared/shared/logger.py
+      - shared/shared/utils/data_cleaning.py
+      - data/interim/velib_cleaned_latest.parquet
+    outs:
+      - data/processed/train_preprocessed.parquet
+      - data/processed/test_preprocessed.parquet
+      - data/processed/stations_geo.parquet
+
+  train_model:
+    desc: "Entraîne XGBoost sur le résidu, logue MLflow, promeut en alias 'staging' du Registry."
+    cmd: python -m ml.src.models.train_model
+    deps:
+      - ml/src/models/train_model.py
+      - ml/src/models/_helpers.py
+      - shared/shared/config.py
+      - shared/shared/logger.py
+      - data/processed/train_preprocessed.parquet
+      - data/processed/test_preprocessed.parquet
+    outs:
+      - mlflow.db
+      - mlartifacts
+      - mlruns
+    metrics:
+      - data/outputs/metrics.json:
+          cache: false
+    plots:
+      - data/outputs/feature_importance.png:
+          cache: false
+      - data/outputs/residuals_distribution.png:
+          cache: false
+      - data/outputs/predictions_vs_actual.png:
+          cache: false
