@@ -1,4 +1,4 @@
-# 🚲 Vélib MLOp
+# 🚲 Vélib MLOps
 
 Projet MLOps de prédiction de disponibilité des stations Vélib.
 
