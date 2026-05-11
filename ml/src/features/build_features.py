@@ -149,7 +149,7 @@ def build_features(
         FileNotFoundError: si le parquet nettoyé n'existe pas
             (lancer ``make_dataset`` au préalable).
     """
-    settings.ensure_directories()
+# #     settings.ensure_directories()
 
     # ── Chargement du parquet nettoyé ─────────────────────────────────────
     cleaned_path = settings.interim_path

@@ -73,8 +73,8 @@ MODEL_NAME = "velib_fill_rate_predictor"
 STAGING_ALIAS = "staging"
 
 # Backend SQLite + artifact root local (cf. cours MLflow production)
-TRACKING_URI = "http://mlflow-server:5000"
-ARTIFACT_ROOT = "/app/mlartifacts"
+TRACKING_URI = f"sqlite:///{settings.repo_root / 'mlflow.db'}"
+ARTIFACT_ROOT = str(settings.repo_root / "mlartifacts")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -138,7 +138,7 @@ def _setup_mlflow() -> None:
         )
         logger.info(
             "Experiment MLflow créé",
-            extra={"experiment_name": EXPERIMENT_NAME, "artifact_root": ARTIFACT_ROOT},
+            extra={"name": EXPERIMENT_NAME, "artifact_root": ARTIFACT_ROOT},
         )
     mlflow.set_experiment(EXPERIMENT_NAME)
     logger.info(
@@ -242,7 +242,7 @@ def train_model() -> dict[str, float]:
         FileNotFoundError: si les parquets train/test n'existent pas.
         ValueError: si les features attendues sont absentes.
     """
-#     #settings.ensure_directories() skip dossiers déjà montés via volumes Docker
+    settings.ensure_directories()
 
     # ── 1. Chargement ──────────────────────────────────────────────────────
     train, test = _load_train_test()

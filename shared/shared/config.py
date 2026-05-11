@@ -30,11 +30,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # ─────────────────────────────────────────────────────────────────────────────
 # RACINE PROJET
+import os
 # ─────────────────────────────────────────────────────────────────────────────
 # Path résolu une seule fois au chargement du module.
 # Hypothèse : ce fichier vit dans <repo>/shared/shared/config.py
-# Donc <repo> = parent du parent du parent.
-_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+_REPO_ROOT = Path(os.getenv('REPO_ROOT', str(Path(__file__).resolve().parent.parent.parent)))
 
 
 class Settings(BaseSettings):

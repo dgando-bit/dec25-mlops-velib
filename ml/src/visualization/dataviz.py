@@ -850,7 +850,7 @@ def run_dataviz(write_to_disk: bool = True) -> Path:
     Raises:
         FileNotFoundError: si raw ou cleaned parquet n'existent pas.
     """
-    settings.ensure_directories()
+#     settings.ensure_directories()
 
     # ── Lecture des deux parquets (raw + cleaned) ────────────────────────
     raw_path = settings.raw_snapshot_path

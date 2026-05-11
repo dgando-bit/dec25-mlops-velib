@@ -275,7 +275,7 @@ def load_from_hf(write_to_disk: bool = True) -> pd.DataFrame:
         FileNotFoundError: aucun fichier raw trouvé sur HF.
         HfHubHTTPError, RepositoryNotFoundError: après retries épuisés.
     """
-    settings.ensure_directories()
+#     settings.ensure_directories()
 
     logger.info(
         "Démarrage load_from_hf",

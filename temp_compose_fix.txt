@@ -1,0 +1,19 @@
+  ml_training:
+    container_name: velib_ml
+    build:
+      context: .
+      dockerfile: ml/Dockerfile
+      target: training
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow-server:5000
+      REPO_ROOT: /app
+    volumes:
+      - ./ml:/app/ml
+      - ./data:/app/data
+      - ./shared:/app/shared
+      - ./mlflow/artifacts:/mlflow/artifacts
+    networks:
+      - mlops-net
+    depends_on:
+      - mlflow-server
+    command: python ml/src/main.py

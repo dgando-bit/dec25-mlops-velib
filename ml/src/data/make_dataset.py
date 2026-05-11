@@ -159,7 +159,7 @@ def make_dataset(write_to_disk: bool = True) -> pd.DataFrame:
         FileNotFoundError: si ``settings.raw_snapshot_path`` n'existe pas
             (lancer ``load_from_hf`` au préalable).
     """
-    settings.ensure_directories()
+# #     settings.ensure_directories()
 
     # ── Lecture parquet brut ──────────────────────────────────────────────
     raw_path = settings.raw_snapshot_path
