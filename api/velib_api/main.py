@@ -35,9 +35,9 @@ from sklearn.pipeline import Pipeline
 from shared.logger import get_logger
 from ml.src.models.predict_model import predict_with_confidence
 from ml.src.models._helpers import FEATURES_FINAL
-from velib_api import __version__
-from velib_api.dependencies import get_model, preload_model
-from velib_api.schemas import (
+from api.velib_api import __version__
+from api.velib_api.dependencies import get_model, preload_model
+from api.velib_api.schemas import (
     BatchPredictionRequest,
     BatchPredictionResponse,
     HealthResponse,
