@@ -26,7 +26,7 @@ from pathlib import Path
 
 from pydantic import Field, SecretStr, computed_field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
+import os
 
 # ─────────────────────────────────────────────────────────────────────────────
 # RACINE PROJET
@@ -34,7 +34,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # Path résolu une seule fois au chargement du module.
 # Hypothèse : ce fichier vit dans <repo>/shared/shared/config.py
 # Donc <repo> = parent du parent du parent.
-_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+_REPO_ROOT = BASE_DIR = Path(os.getenv("APP_DIR", "/app"))
+# _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
 
 class Settings(BaseSettings):

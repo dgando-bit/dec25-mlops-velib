@@ -135,15 +135,15 @@ def _setup_mlflow() -> None:
         client.create_experiment(
             name=EXPERIMENT_NAME, artifact_location=ARTIFACT_ROOT
         )
-        logger.info(
-            "Experiment MLflow créé",
-            extra={"experiment_name": EXPERIMENT_NAME, "artifact_root": ARTIFACT_ROOT},
-        )
+        # logger.info(
+        #     "Experiment MLflow créé",
+        #     extra={"name": EXPERIMENT_NAME, "artifact_root": ARTIFACT_ROOT},
+        # )
     mlflow.set_experiment(EXPERIMENT_NAME)
-    logger.info(
-        "MLflow configuré",
-        extra={"tracking_uri": TRACKING_URI, "experiment": EXPERIMENT_NAME},
-    )
+    # logger.info(
+    #     "MLflow configuré",
+    #     extra={"tracking_uri": TRACKING_URI, "experiment": EXPERIMENT_NAME},
+    # )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
