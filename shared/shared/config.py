@@ -24,18 +24,22 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import os
+
 from pydantic import Field, SecretStr, computed_field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-import os
 
 # ─────────────────────────────────────────────────────────────────────────────
 # RACINE PROJET
 # ─────────────────────────────────────────────────────────────────────────────
 # Path résolu une seule fois au chargement du module.
-# Hypothèse : ce fichier vit dans <repo>/shared/shared/config.py
-# Donc <repo> = parent du parent du parent.
-_REPO_ROOT = BASE_DIR = Path(os.getenv("APP_DIR", "/app"))
-# _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+# Docker : APP_DIR=/app injecté par docker-compose.
+# Local  : résolution via __file__ (<repo>/shared/shared/config.py → 3 parents).
+_REPO_ROOT = BASE_DIR = (
+    Path(os.environ["APP_DIR"])
+    if "APP_DIR" in os.environ
+    else Path(__file__).resolve().parent.parent.parent
+)
 
 
 class Settings(BaseSettings):
