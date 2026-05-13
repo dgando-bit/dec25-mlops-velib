@@ -59,3 +59,5 @@ mlflow.db
 .DS_Store
 /mlartifacts
 /mlruns
+CLAUDE.md
+CLAUDE.md*

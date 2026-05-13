@@ -75,7 +75,7 @@ stages:
       - data/processed/stations_geo.parquet
 
   train_model:
-    desc: "Entraîne XGBoost sur le résidu, logue MLflow, promeut en alias 'staging' du Registry."
+    desc: "Entraîne XGBoost sur le résidu, logue MLflow (PostgreSQL), promeut en alias 'staging' du Registry."
     cmd: python -m ml.src.models.train_model
     deps:
       - ml/src/models/train_model.py
@@ -84,10 +84,6 @@ stages:
       - shared/shared/logger.py
       - data/processed/train_preprocessed.parquet
       - data/processed/test_preprocessed.parquet
-    outs:
-      - mlflow.db
-      - mlartifacts
-      - mlruns
     metrics:
       - data/outputs/metrics.json:
           cache: false

@@ -164,17 +164,3 @@ stages:
       hash: md5
       md5: a5d89a54f35da97546f287cc34b45e30
       size: 45486
-    - path: mlartifacts
-      hash: md5
-      md5: a0da10b5a8a2c70b8c6de32a8412ff47.dir
-      size: 5072599
-      nfiles: 31
-    - path: mlflow.db
-      hash: md5
-      md5: 2942e7a32588069e2fe8c810aeed3ad9
-      size: 225280
-    - path: mlruns
-      hash: md5
-      md5: d751713988987e9331980363e24189ce.dir
-      size: 0
-      nfiles: 0

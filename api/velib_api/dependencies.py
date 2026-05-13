@@ -20,8 +20,7 @@ from sklearn.pipeline import Pipeline
 
 from shared.config import settings
 from shared.logger import get_logger
-from ml.src.models.predict_model import load_staging_model, load_model_by_alias
-from ml.src.models._helpers import FEATURES_FINAL
+from velib_api.inference import FEATURES_FINAL, load_model_by_alias, load_staging_model
 
 logger = get_logger(__name__)
 
@@ -64,14 +63,13 @@ def preload_model() -> dict:
     Returns:
         dict avec les métadonnées du modèle chargé (pour log).
     """
-    from mlflow.tracking import MlflowClient
     import mlflow
+    from mlflow.tracking import MlflowClient
 
     logger.info("Pré-chargement du modèle 'staging' au démarrage de l'API...")
     model = load_staging_model()
 
-    # Récupère les métadonnées pour log + endpoint /model/info
-    mlflow.set_tracking_uri(f"sqlite:///{settings.repo_root / 'mlflow.db'}")
+    mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
     client = MlflowClient()
     version_info = client.get_model_version_by_alias(
         "velib_fill_rate_predictor", "staging"

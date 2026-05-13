@@ -33,8 +33,7 @@ from fastapi.responses import RedirectResponse
 from sklearn.pipeline import Pipeline
 
 from shared.logger import get_logger
-from ml.src.models.predict_model import predict_with_confidence
-from ml.src.models._helpers import FEATURES_FINAL
+from velib_api.inference import FEATURES_FINAL, predict_with_confidence
 from velib_api import __version__
 from velib_api.dependencies import get_model, preload_model
 from velib_api.schemas import (

@@ -173,6 +173,13 @@ class Settings(BaseSettings):
         description="Délai initial avant retry (secondes). Backoff exponentiel ensuite.",
     )
 
+    # MLflow
+    mlflow_tracking_uri: str = "http://mlflow-server:5000"
+    mlflow_artifact_uri: str = "file:///app/mlflow/artifacts"
+    mlflow_experiment_name: str = "velib-metropole"
+    mlflow_run_name: str = "velib-metropole-run"
+    mlflow_model_name: str = "velib-metropole-model"
+
     # ─────────────────────────────────────────────────────────────────────────
     # VALIDATEURS
     # ─────────────────────────────────────────────────────────────────────────
