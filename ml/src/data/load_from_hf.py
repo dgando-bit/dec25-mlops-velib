@@ -51,9 +51,11 @@ from tenacity import (
     wait_exponential,
 )
 
+# from shared.config import get_settings
 from shared.config import settings
 from shared.logger import get_logger
 
+# settings = get_settings()
 logger = get_logger(__name__)
 
 

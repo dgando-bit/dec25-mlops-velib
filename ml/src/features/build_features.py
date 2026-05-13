@@ -45,7 +45,7 @@ import pandas as pd
 
 from shared.config import settings
 from shared.logger import get_logger
-from ml.src.features._helpers import (
+from ml.src.utils._helpers import (
     add_capacity_group,
     add_post_split_features,
     add_residual_target,

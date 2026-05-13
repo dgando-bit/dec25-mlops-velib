@@ -59,7 +59,8 @@ services:
       - ./ml:/app/ml
       - ./data:/app/data
       - ./shared:/app/shared
-      - ./mlflow/artifacts:/mlflow/artifacts
+      - ./mlflow/artifacts:/app/mlflow/artifacts
+#      - ./mlflow/artifacts:/mlflow/artifacts
     networks:
       - mlops-net
     depends_on:

@@ -23,7 +23,7 @@ COPY --chown=appuser:appuser ml/requirements.txt /app/ml-requirements.txt
 
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -r /app/ml-requirements.txt \
-    && pip install --no-cache-dir /app/shared
+    && pip install --no-cache-dir -e /app/shared
 
 COPY --chown=appuser:appuser ml/ /app/ml/
 
