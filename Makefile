@@ -239,12 +239,12 @@ health:
 	fi
 
 	@echo "$(BOLD)[2/4] MLflow Server$(RESET)"
-	@if curl -sf http://localhost:5001/health > /dev/null 2>&1; then \
+	@if curl -sf http://localhost:5000/health > /dev/null 2>&1; then \
 		echo "  $(GREEN)✓ MLflow opérationnel$(RESET)"; \
-	elif curl -sf http://localhost:5001 > /dev/null 2>&1; then \
+	elif curl -sf http://localhost:5000 > /dev/null 2>&1; then \
 		echo "  $(GREEN)✓ MLflow répond (pas d'endpoint /health)$(RESET)"; \
 	else \
-		echo "  $(RED)✗ MLflow ne répond pas sur :5001$(RESET)"; \
+		echo "  $(RED)✗ MLflow ne répond pas sur :5000$(RESET)"; \
 	fi
 
 	@echo "$(BOLD)[3/4] API$(RESET)"
@@ -274,7 +274,8 @@ test: test-mlflow test-api
 
 test-mlflow:
 	@echo "$(CYAN)→ Test de connexion MLflow...$(RESET)"
-	@curl -sf http://localhost:5001/api/2.0/mlflow/experiments/list > /dev/null 2>&1 \
+	@curl -sf -X POST http://localhost:5000/api/2.0/mlflow/experiments/search \
+		-H "Content-Type: application/json" -d '{"max_results":1}' > /dev/null 2>&1 \
 		&& echo "  $(GREEN)✓ MLflow API répond$(RESET)" \
 		|| echo "  $(RED)✗ MLflow API inaccessible$(RESET)"
 	@echo "$(CYAN)→ Test de connexion à la DB depuis mlflow-server...$(RESET)"

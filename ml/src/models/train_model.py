@@ -137,7 +137,7 @@ def _setup_mlflow() -> None:
         )
         logger.info(
             "Experiment MLflow créé",
-            extra={"name": EXPERIMENT_NAME, "artifact_root": ARTIFACT_ROOT},
+            extra={"experiment_name": EXPERIMENT_NAME, "artifact_root": ARTIFACT_ROOT},
         )
     mlflow.set_experiment(EXPERIMENT_NAME)
     logger.info(
@@ -195,7 +195,7 @@ def _promote_to_staging(client: MlflowClient, model_uri: str, run_id: str) -> in
     client.set_registered_model_alias(
         name=MODEL_NAME,
         alias=STAGING_ALIAS,
-        version=version_int,
+        version=str(version_int),
     )
     logger.info(
         "Alias 'staging' posé",

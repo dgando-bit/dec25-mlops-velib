@@ -48,6 +48,7 @@ venv/
 # ─── ML ─────────────────────────────────────────────────────────────────────
 mlruns/
 mlartifacts/
+mlflow/artifacts/
 *.joblib
 *.pkl
 mlflow.db
