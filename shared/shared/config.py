@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     mlflow_run_name: str = "velib-metropole-run"
     mlflow_model_name: str = "velib-metropole-model"
     registered_model_name: str = "velib-capacity-model"
+    ml_model_stage: str = "staging"
+    api_model_stage: str = "production"
 
     # Paths
     data_dir: Path = BASE_DIR / "data"

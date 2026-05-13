@@ -55,12 +55,12 @@ services:
       target: training
     environment:
       MLFLOW_TRACKING_URI: http://mlflow-server:5000
+      MODEL_STAGE: ${ML_MODEL_STAGE}
     volumes:
       - ./ml:/app/ml
       - ./data:/app/data
       - ./shared:/app/shared
       - ./mlflow/artifacts:/app/mlflow/artifacts
-#      - ./mlflow/artifacts:/mlflow/artifacts
     networks:
       - mlops-net
     depends_on:
@@ -110,6 +110,7 @@ services:
       - "8000:8000"
     environment:
       MLFLOW_TRACKING_URI: http://mlflow-server:5000
+      MODEL_STAGE: ${API_MODEL_STAGE}
     volumes:
       - ./mlflow/artifacts:/mlflow/artifacts
     networks:

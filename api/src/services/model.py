@@ -34,7 +34,8 @@ def load_model() -> None:
 
     mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
 
-    model_uri = f"models:/{settings.registered_model_name}/Production"
+    # model_uri = f"models:/{settings.registered_model_name}/{settings.api_model_stage}"
+    model_uri = f"models:/{settings.registered_model_name}@{settings.api_model_stage}"
 
     logger.info(
         "Chargement du modèle MLflow — %s @ %s",
@@ -47,7 +48,7 @@ def load_model() -> None:
         # Récupère la version depuis les métadonnées MLflow
         client = mlflow.MlflowClient()
         versions = client.get_latest_versions(
-            settings.registered_model_name, stages=["Production"]
+            settings.registered_model_name, stages=[settings.api_model_stage]
         )
         _model_version = versions[0].version if versions else "unknown"
         logger.info("Modèle chargé — version %s", _model_version)
