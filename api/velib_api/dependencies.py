@@ -20,7 +20,7 @@ from sklearn.pipeline import Pipeline
 
 from shared.config import settings
 from shared.logger import get_logger
-from velib_api.inference import FEATURES_FINAL, load_model_by_alias, load_staging_model
+from api.velib_api.inference import FEATURES_FINAL, load_model_by_alias, load_staging_model
 
 logger = get_logger(__name__)
 

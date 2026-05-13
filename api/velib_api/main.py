@@ -33,10 +33,10 @@ from fastapi.responses import RedirectResponse
 from sklearn.pipeline import Pipeline
 
 from shared.logger import get_logger
-from velib_api.inference import FEATURES_FINAL, predict_with_confidence
-from velib_api import __version__
-from velib_api.dependencies import get_model, preload_model
-from velib_api.schemas import (
+from api.velib_api.inference import FEATURES_FINAL, predict_with_confidence
+from api.velib_api import __version__
+from api.velib_api.dependencies import get_model, preload_model
+from api.velib_api.schemas import (
     BatchPredictionRequest,
     BatchPredictionResponse,
     HealthResponse,

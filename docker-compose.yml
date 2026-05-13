@@ -109,9 +109,12 @@ services:
     environment:
       MLFLOW_TRACKING_URI: http://mlflow-server:5000
     volumes:
+      - ./api:/app/api
+      - ./shared:/app/shared
       - ./mlflow/artifacts:/mlflow/artifacts
     networks:
       - mlops-net
+    command: uvicorn api.velib_api.main:app --host 0.0.0.0 --port 8000 --reload
 
   nginx:
     build:
