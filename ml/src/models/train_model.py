@@ -7,7 +7,7 @@ automatiquement le modèle en alias 'staging' du Model Registry.
 
 Pipeline :
     1. Chargement train + test parquets (data/processed/)
-    2. Configuration MLflow (SQLite + experiment + autolog)
+    2. Configuration MLflow (URI depuis settings + experiment + autolog)
     3. Entraînement du Pipeline (imputer + XGBoost)
     4. Évaluation (résidu + taux reconstruit)
     5. Génération des 3 plots (importance, résidus, predictions_vs_actual)
@@ -22,7 +22,7 @@ Pipeline DVC :
     Sorties :
         - mlruns/                              (métadonnées MLflow)
         - mlartifacts/                         (artefacts MLflow)
-        - mlflow.db                            (SQLite backend)
+
         - data/outputs/metrics.json            (métriques pour DVC)
         - data/outputs/feature_importance.png  (plot DVC)
         - data/outputs/residuals_distribution.png
@@ -72,9 +72,8 @@ EXPERIMENT_NAME = "velib_fill_rate"
 MODEL_NAME = "velib_fill_rate_predictor"
 STAGING_ALIAS = "staging"
 
-# Backend SQLite + artifact root local (cf. cours MLflow production)
-TRACKING_URI = f"sqlite:///{settings.repo_root / 'mlflow.db'}"
-ARTIFACT_ROOT = str(settings.repo_root / "mlartifacts")
+TRACKING_URI = settings.mlflow_tracking_uri
+ARTIFACT_ROOT = settings.mlflow_artifact_uri
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -126,7 +125,7 @@ def _load_train_test() -> tuple[pd.DataFrame, pd.DataFrame]:
 # SETUP MLflow
 # ─────────────────────────────────────────────────────────────────────────────
 def _setup_mlflow() -> None:
-    """Configure MLflow : URI SQLite + experiment + crée si inexistant."""
+    """Configure MLflow : URI depuis settings + experiment + crée si inexistant."""
     mlflow.set_tracking_uri(TRACKING_URI)
 
     # Créer l'expérience si elle n'existe pas (avec artifact_root explicite)
@@ -136,15 +135,15 @@ def _setup_mlflow() -> None:
         client.create_experiment(
             name=EXPERIMENT_NAME, artifact_location=ARTIFACT_ROOT
         )
-        logger.info(
-            "Experiment MLflow créé",
-            extra={"name": EXPERIMENT_NAME, "artifact_root": ARTIFACT_ROOT},
-        )
+        # logger.info(
+        #     "Experiment MLflow créé",
+        #     extra={"name": EXPERIMENT_NAME, "artifact_root": ARTIFACT_ROOT},
+        # )
     mlflow.set_experiment(EXPERIMENT_NAME)
-    logger.info(
-        "MLflow configuré",
-        extra={"tracking_uri": TRACKING_URI, "experiment": EXPERIMENT_NAME},
-    )
+    # logger.info(
+    #     "MLflow configuré",
+    #     extra={"tracking_uri": TRACKING_URI, "experiment": EXPERIMENT_NAME},
+    # )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -196,7 +195,7 @@ def _promote_to_staging(client: MlflowClient, model_uri: str, run_id: str) -> in
     client.set_registered_model_alias(
         name=MODEL_NAME,
         alias=STAGING_ALIAS,
-        version=version_int,
+        version=str(version_int),
     )
     logger.info(
         "Alias 'staging' posé",

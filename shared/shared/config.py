@@ -1,3 +1,25 @@
+"""
+shared.config — Configuration centralisée du projet Vélib' MLOps.
+
+Toute la configuration est lue depuis les variables d'environnement
+(ou un fichier .env à la racine du projet), validée par Pydantic, et
+exposée via l'objet singleton ``settings``.
+
+Avantages :
+    - validation au démarrage : erreur immédiate si une variable est mal typée
+    - autocomplétion : ``settings.raw_data_dir`` plutôt que ``os.environ["RAW_DIR"]``
+    - centralisation : tous les services partagent les mêmes définitions
+    - testabilité : on peut surcharger n'importe quel champ dans les tests
+
+Usage :
+    from shared.config import settings
+    raw_path = settings.raw_data_dir / settings.raw_snapshot_filename
+
+Convention :
+    - les chemins sont toujours des objets Path absolus
+    - les secrets (HF_TOKEN) sont en SecretStr (n'apparaît jamais dans les logs)
+    - les valeurs par défaut sont prévues pour un développement local sain
+"""
 from __future__ import annotations
 
 import os
@@ -6,24 +28,25 @@ from pathlib import Path
 from pydantic import Field, SecretStr, computed_field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-BASE_DIR = Path(os.getenv("APP_DIR", "/app"))
+# ─────────────────────────────────────────────────────────────────────────────
+# RACINE PROJET
+# ─────────────────────────────────────────────────────────────────────────────
+# Path résolu une seule fois au chargement du module.
+# Docker : APP_DIR=/app injecté par docker-compose.
+# Local  : résolution via __file__ (<repo>/shared/shared/config.py → 3 parents).
+_REPO_ROOT = BASE_DIR = (
+    Path(os.environ["APP_DIR"])
+    if "APP_DIR" in os.environ
+    else Path(__file__).resolve().parent.parent.parent
+)
+#_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+#BASE_DIR = Path(os.getenv("APP_DIR", "/app"))
 
 
 class Settings(BaseSettings):
     # API
     api_url: str = "https://mon-api.example.com"
     critical_threshold: int = 3
-
-    # MLflow
-    mlflow_tracking_uri: str = "http://mlflow-server:5000"
-    mlflow_artifact_uri: str = "file:///app/mlflow/artifacts"
-    mlflow_experiment_name: str = "velib-metropole"
-    mlflow_run_name: str = "velib-metropole-run"
-    mlflow_model_name: str = "velib-metropole-model"
-    registered_model_name: str = "velib-capacity-model"
-    ml_model_stage: str = "staging"
-    api_model_stage: str = "production"
 
     # Paths
     data_dir: Path = BASE_DIR / "data"
@@ -52,19 +75,19 @@ class Settings(BaseSettings):
     # DOSSIERS DATA — versionnés DVC
     # ─────────────────────────────────────────────────────────────────────────
     raw_data_dir: Path = Field(
-        default=BASE_DIR / "data" / "raw",
+        default=_REPO_ROOT / "data" / "raw",
         description="Dossier des snapshots bruts produits par load_from_hf.",
     )
     interim_data_dir: Path = Field(
-        default=BASE_DIR / "data" / "interim",
+        default=_REPO_ROOT / "data" / "interim",
         description="Dossier des données nettoyées (sortie make_dataset).",
     )
     processed_data_dir: Path = Field(
-        default=BASE_DIR / "data" / "processed",
+        default=_REPO_ROOT / "data" / "processed",
         description="Dossier des features finales train/test (sortie build_features).",
     )
     plots_dir: Path = Field(
-        default=BASE_DIR / "data" / "outputs" / "plots",
+        default=_REPO_ROOT / "data" / "outputs" / "plots",
         description="Dossier des graphiques produits par dataviz.",
     )
 
@@ -156,6 +179,16 @@ class Settings(BaseSettings):
         ge=0.0,
         description="Délai initial avant retry (secondes). Backoff exponentiel ensuite.",
     )
+
+    # MLflow
+    mlflow_tracking_uri: str = "http://mlflow-server:5000"
+    mlflow_artifact_uri: str = "file:///app/mlflow/artifacts"
+    mlflow_experiment_name: str = "velib-metropole"
+    mlflow_run_name: str = "velib-metropole-run"
+    mlflow_model_name: str = "velib-metropole-model"
+    registered_model_name: str = "velib-capacity-model"
+    ml_model_stage: str = "staging"
+    api_model_stage: str = "production"
 
     # ─────────────────────────────────────────────────────────────────────────
     # VALIDATEURS
@@ -259,10 +292,10 @@ class Settings(BaseSettings):
             d.mkdir(parents=True, exist_ok=True)
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=_REPO_ROOT / ".env",
         env_file_encoding="utf-8",
-        case_sensitive=False,
-        extra="ignore",
+        case_sensitive=False,        # HF_TOKEN ou hf_token : indifférent
+        extra="ignore",              # ignore les variables d'env non déclarées
     )
 
 # Instance singleton — importée par tous les services

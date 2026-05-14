@@ -34,30 +34,33 @@ L'architecture est pensée comme un mini-système MLOps end-to-end avec une cont
 │                                            │                             │
 │                                            ▼                             │
 │                                                                          │
-│  SERVING (à venir)                                                       │
-│  ─────────────────                                                       │
-│  api/main.py (FastAPI)  ──►  /predict        ──►  Streamlit dashboard    │
+│  SERVING                                                                 │
+│  ────────                                                                │
+│  api/velib_api/main.py (FastAPI)  ──►  /predict                         │
+│  deployments/nginx/ (reverse proxy :8080)                                │
+│  Streamlit dashboard (Phase 3 — démonstration jury)                      │
 │                                                                          │
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### État d'avancement (mai 2026)
 
-| Composant                              | État          | Module formation   |
-|----------------------------------------|---------------|--------------------|
-| Collecte continue (HF Space)           | ✅ Opérationnel | —                  |
-| `load_from_hf.py` (téléchargement)     | ✅ Refactoré    | DVC                |
-| `make_dataset.py` (nettoyage)          | ✅ Refactoré    | DVC + cookiecutter |
-| `dataviz.py` (visualisation Plotly)    | ✅ Refactoré    | Seaborn / Plotly   |
-| `build_features.py` (FE + split)       | ⏳ À faire      | Feature engineering |
-| `train_model.py` (XGBoost + MLflow)    | ⏳ À faire      | MLflow             |
-| API d'inférence (FastAPI)              | ⏳ À faire      | FastAPI            |
-| Versioning DVC + DagsHub               | ⏳ À faire      | DVC + DagsHub      |
-| Orchestration Airflow                  | ⏳ Phase 3      | Airflow            |
-| Serving BentoML                        | ⏳ Phase 3      | BentoML            |
-| Reverse proxy Nginx                    | ⏳ Phase 3      | Nginx              |
-| Monitoring Prometheus / Grafana        | ⏳ Phase 4      | Prometheus/Grafana |
-| Drift detection (Evidently)            | ⏳ Phase 4      | Evidently          |
+| Composant                              | État             | Module formation    |
+|----------------------------------------|------------------|---------------------|
+| Collecte continue (HF Space)           | ✅ Opérationnel   | —                   |
+| `load_from_hf.py` (téléchargement)     | ✅ Implémenté     | DVC                 |
+| `make_dataset.py` (nettoyage)          | ✅ Implémenté     | DVC + cookiecutter  |
+| `dataviz.py` (visualisation Plotly)    | ✅ Implémenté     | Seaborn / Plotly    |
+| `build_features.py` (FE + split)       | ✅ Implémenté     | Feature engineering |
+| `train_model.py` (XGBoost + MLflow)    | ✅ Implémenté     | MLflow              |
+| Pipeline DVC (5 stages)                | ✅ Opérationnel   | DVC + DagsHub       |
+| API d'inférence (FastAPI)              | ✅ Implémentée    | FastAPI             |
+| Reverse proxy Nginx                    | ✅ Dockerfile     | Nginx               |
+| Monitoring Prometheus                  | ⚙️ Config présente | Prometheus/Grafana  |
+| Dashboard Grafana                      | ⏳ À faire        | Prometheus/Grafana  |
+| Streamlit (démo jury)                  | ⏳ Phase 3        | Streamlit           |
+| Orchestration Airflow                  | ⏳ Phase 3        | Airflow             |
+| Drift detection (Evidently)            | ⏳ Phase 4        | Evidently           |
 
 ### Volumétrie observée (05 mai 2026)
 
@@ -77,59 +80,82 @@ L'architecture est pensée comme un mini-système MLOps end-to-end avec une cont
 
 ```
 dec25-mlops-velib/
-├── README.md                       ← (ce fichier)
+├── README_.md                      ← (ce fichier)
 ├── .env.example                    ← template variables d'environnement
 ├── .gitignore                      ← exclusions Git
-├── dvc.yaml                        ← pipeline DVC reproductible (4 stages)
+├── dvc.yaml                        ← pipeline DVC reproductible (5 stages)
+├── dvc.lock                        ← snapshot des hash DVC (versionné Git)
+├── docker-compose.yml              ← orchestration 6 services
+├── Makefile                        ← CLI projet : build/up/down/train/dvc-*
 │
-├── shared/                         ← package Python partagé (config, logger, helpers)
+├── shared/                         ← package Python partagé (installé en editable)
 │   ├── pyproject.toml
 │   └── shared/
 │       ├── __init__.py
-│       ├── config.py               ← Pydantic Settings (lit .env)
-│       ├── logger.py               ← logger structuré (text/json)
+│       ├── config.py               ← Pydantic Settings singleton (lit .env)
+│       ├── logger.py               ← logger structuré text/JSON
 │       └── utils/
 │           ├── __init__.py
-│           └── data_cleaning.py    ← helpers de nettoyage et météo
+│           ├── data_cleaning.py    ← utilitaires nettoyage partagés
+│           └── helpers.py          ← helpers génériques
 │
 ├── ml/                             ← service ML
 │   ├── requirements.txt            ← dépendances ML
-│   ├── Dockerfile                  ← (à venir)
+│   ├── Dockerfile                  ← multi-stage : base / training / jupyter
 │   └── src/
-│       ├── data/                   ← chargement et nettoyage
-│       │   ├── load_from_hf.py     ✅
-│       │   └── make_dataset.py     ✅
-│       ├── features/               ← feature engineering
-│       │   └── build_features.py   ⏳
-│       ├── models/                 ← entraînement et inférence
-│       │   ├── train_model.py      ⏳
-│       │   └── predict_model.py    ⏳
-│       └── visualization/          ← graphes d'exploration
-│           └── dataviz.py          ✅
+│       ├── main.py                 ← ⚠️ stub (2 lignes) — ne lance pas l'entraînement
+│       ├── data/
+│       │   ├── load_from_hf.py     ← stage 1 DVC ✅
+│       │   └── make_dataset.py     ← stage 2 DVC ✅
+│       ├── features/
+│       │   ├── build_features.py   ← stage 4 DVC ✅
+│       │   └── _helpers.py         ← FEATURES_FINAL (24 features) + constantes
+│       ├── models/
+│       │   ├── train_model.py      ← stage 5 DVC ✅ (XGBoost + MLflow)
+│       │   ├── predict_model.py    ← load_staging_model(), predict_with_confidence()
+│       │   └── _helpers.py         ← helpers partagés training/inference
+│       └── visualization/
+│           └── dataviz.py          ← stage 3 DVC ✅ (rapport HTML Plotly, 7 graphes)
 │
-├── api/                            ← API FastAPI (à venir)
+├── api/                            ← API FastAPI d'inférence ✅
 │   ├── Dockerfile
-│   └── main.py
+│   ├── requirements.txt
+│   └── velib_api/
+│       ├── main.py                 ← app FastAPI, 5 endpoints, lifespan startup/shutdown
+│       ├── dependencies.py         ← get_model() / preload_model() — injection FastAPI
+│       ├── schemas.py              ← Pydantic : StationFeatures (25 champs), réponses
+│       └── inference.py
 │
-├── mlflow/                         ← serveur MLflow (à venir)
+├── mlflow/                         ← serveur MLflow (tracking + registry)
 │   ├── Dockerfile
+│   ├── requirements.txt
 │   └── artifacts/                  ← (ignoré Git, persisté en volume Docker)
 │
 ├── data/                           ← données versionnées DVC (ignorées Git)
-│   ├── raw/                        ← snapshots bruts depuis HF
-│   │   ├── velib_snapshot_latest.parquet  ← (généré par load_from_hf)
-│   │   └── .snapshots.log          ← trace humaine des téléchargements
-│   ├── interim/                    ← données nettoyées
-│   │   ├── velib_cleaned_latest.parquet   ← (généré par make_dataset)
-│   │   └── .cleaning.log           ← trace humaine des nettoyages
-│   ├── processed/                  ← features finales train/test
-│   └── outputs/                    ← graphiques, exports
+│   ├── raw/
+│   │   ├── velib_snapshot_latest.parquet  ← généré par load_from_hf
+│   │   └── .snapshots.log
+│   ├── interim/
+│   │   ├── velib_cleaned_latest.parquet   ← généré par make_dataset
+│   │   └── .cleaning.log
+│   ├── processed/
+│   │   ├── train_preprocessed.parquet
+│   │   ├── test_preprocessed.parquet
+│   │   └── stations_geo.parquet
+│   └── outputs/
+│       ├── metrics.json            ← métriques du dernier run (non caché DVC)
 │       └── plots/
-│           └── dataviz_report.html ← (généré par dataviz, ~110 Mo)
+│           ├── dataviz_report.html ← généré par dataviz (~110 Mo)
+│           ├── feature_importance.png
+│           ├── residuals_distribution.png
+│           └── predictions_vs_actual.png
 │
-└── deployments/                    ← infra (à venir)
+└── deployments/
     ├── nginx/
+    │   ├── Dockerfile
+    │   └── nginx.conf              ← rate limit 10r/s, A/B testing X-Experiment-Group
     └── prometheus/
+        └── prometheus.yml          ← ⚙️ config présente, non configurée
 ```
 
 ---
@@ -173,7 +199,10 @@ wsl
 cd ~
 git clone https://github.com/dgando-bit/dec25-mlops-velib.git
 cd dec25-mlops-velib
+git checkout add-rectification-global
 ```
+
+> **Important** : la branche `main` contient une version antérieure du projet sans la configuration HF. Reste sur `add-rectification-global` pour disposer du pipeline complet.
 
 ### 3. Créer un environnement virtuel Python
 
@@ -193,7 +222,7 @@ source .venv/bin/activate
 
 ```bash
 which python
-# Doit retourner : /home/voroman/dec25-mlops-velib/.venv/bin/python
+# Doit retourner : ~/dec25-mlops-velib/.venv/bin/python
 
 python --version
 # Doit retourner : Python 3.12.x  (ou 3.11.x)
@@ -275,12 +304,18 @@ python -m ml.src.data.make_dataset
 # Sortie : data/outputs/plots/dataviz_report.html (~110 Mo)
 python -m ml.src.visualization.dataviz
 
-# Étape 4 — feature engineering (à venir)
-# python -m ml.src.features.build_features
+# Étape 4 — feature engineering
+# Durée : ~20 secondes (24 features, split train/test temporel)
+python -m ml.src.features.build_features
 
-# Étape 5 — entraînement (à venir)
-# python -m ml.src.models.train_model
+# Étape 5 — entraînement XGBoost + tracking MLflow
+# Durée : ~2-5 minutes selon la machine
+# Sortie : modèle promu alias 'staging' dans le MLflow Registry
+python -m ml.src.models.train_model
 ```
+
+> **Variante DVC** : `dvc repro` ré-exécute uniquement les stages dont les inputs ont changé.
+> `make pipeline` lance `dvc repro` dans le conteneur `ml_training` (nécessite Docker).
 
 ### Ouvrir le rapport visuel
 
@@ -323,13 +358,17 @@ print(df['taux'].describe())
 "
 ```
 
-### Visualiser le pipeline DVC (quand DVC sera initialisé)
+### Travailler avec le pipeline DVC
 
 ```bash
-dvc dag                # affiche le graphe des dépendances
-dvc status             # liste ce qui doit être ré-exécuté
-dvc repro              # ré-exécute tout ce qui doit l'être
+dvc dag                # affiche le graphe des 5 stages
+dvc status             # liste les stages dont les inputs ont changé
+dvc repro              # ré-exécute uniquement ce qui doit l'être
 dvc repro load_from_hf # force la ré-exécution d'un stage particulier
+dvc metrics show       # affiche les métriques du dernier run (r2, mae, mape)
+dvc plots show         # ouvre les graphes de performance (feature importance, résidus)
+dvc push               # pousse les artefacts vers le remote DagsHub
+dvc pull               # récupère les artefacts depuis DagsHub
 ```
 
 ---
@@ -564,6 +603,17 @@ Le rapport est lourd (~110 Mo). Trois solutions :
 # Solution C — appliquer une des optimisations décrites dans la section "Optimisation du rapport"
 ```
 
+### `Token chargé: False` et `Raw data dir: /app/data/raw`
+
+Le fichier `.env` n'est pas trouvé. Deux causes possibles :
+
+1. **`.env` absent** — as-tu bien fait `cp .env.example .env` et renseigné `HF_TOKEN` ?
+2. **Mauvaise branche** — la branche `main` a un `config.py` avec `APP_DIR=/app` par défaut. Assure-toi d'être sur `add-rectification-global` :
+   ```bash
+   git branch          # doit afficher * add-rectification-global
+   git checkout add-rectification-global
+   ```
+
 ### Lenteur de l'installation pip sur Windows
 
 Tu n'es **pas** dans WSL. Vérifie l'invite : si elle commence par `PS C:\` ou `\\wsl.localhost\`, tu es côté Windows. Ouvre un vrai terminal Ubuntu.
@@ -592,7 +642,7 @@ Tu n'es **pas** dans WSL. Vérifie l'invite : si elle commence par `PS C:\` ou `
 - **Charte couleur Vélib'** centralisée dans `dataviz.py` (variable `COLORS`)
 - **Sortie** : HTML autonome avec navigation par onglets, ou objets `Figure` réutilisables depuis Streamlit
 
-### Commits Git (à venir avec DVC)
+### Commits Git
 
 - `feat:` nouvelle fonctionnalité
 - `fix:` correction de bug
@@ -601,9 +651,10 @@ Tu n'es **pas** dans WSL. Vérifie l'invite : si elle commence par `PS C:\` ou `
 - `refactor:` refactoring sans changement fonctionnel
 - `chore:` tâches diverses (déps, config)
 
-### Branches Git (à venir)
+### Branches Git
 
 - `main` : protégée, déploiable
+- `add-rectification-global` : branche active (pipeline complet)
 - `feat/<nom>` : nouvelles fonctionnalités
 - `fix/<nom>` : corrections
 

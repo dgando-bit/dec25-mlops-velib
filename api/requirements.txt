@@ -3,3 +3,7 @@ uvicorn[standard]
 pydantic>=2.0
 mlflow>=2.10,<3
 pandas
+#numpy==2.2.6
+#pandas==2.3.3
+#scikit-learn==1.5.2
+#xgboost==3.0.2
