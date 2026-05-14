@@ -238,7 +238,7 @@ health:
 		echo "  $(RED)✗ PostgreSQL ne répond pas$(RESET)"; \
 	fi
 
-	@echo "$(BOLD)[2/4] MLflow Server$(RESET)"
+	@echo "$(BOLD)[2/4] MLflow Server (via Nginx :5000)$(RESET)"
 	@if curl -sf http://localhost:5000/health > /dev/null 2>&1; then \
 		echo "  $(GREEN)✓ MLflow opérationnel$(RESET)"; \
 	elif curl -sf http://localhost:5000 > /dev/null 2>&1; then \
@@ -247,16 +247,16 @@ health:
 		echo "  $(RED)✗ MLflow ne répond pas sur :5000$(RESET)"; \
 	fi
 
-	@echo "$(BOLD)[3/4] API$(RESET)"
-	@if curl -sf http://localhost:8000/health > /dev/null 2>&1; then \
+	@echo "$(BOLD)[3/4] API (via Nginx :8080)$(RESET)"
+	@if curl -sf http://localhost:8080/health > /dev/null 2>&1; then \
 		echo "  $(GREEN)✓ API opérationnelle$(RESET)"; \
-		curl -s http://localhost:8000/health | python3 -m json.tool 2>/dev/null | sed 's/^/     /'; \
+		curl -s http://localhost:8080/health | python3 -m json.tool 2>/dev/null | sed 's/^/     /'; \
 	else \
-		echo "  $(RED)✗ API ne répond pas sur :8000$(RESET)"; \
+		echo "  $(RED)✗ API ne répond pas sur :8080$(RESET)"; \
 		echo "  $(YELLOW)  → Lance : make logs-api$(RESET)"; \
 	fi
 
-	@echo "$(BOLD)[4/4] Jupyter$(RESET)"
+	@echo "$(BOLD)[4/4] Jupyter (via Nginx :8888)$(RESET)"
 	@if curl -sf http://localhost:8888 > /dev/null 2>&1; then \
 		echo "  $(GREEN)✓ Jupyter opérationnel$(RESET)"; \
 	else \
@@ -284,12 +284,12 @@ test-mlflow:
 		2>/dev/null || echo "  $(RED)✗ Erreur client MLflow$(RESET)"
 
 test-api:
-	@echo "$(CYAN)→ Test des endpoints API...$(RESET)"
+	@echo "$(CYAN)→ Test des endpoints API (via Nginx :8080)...$(RESET)"
 	@echo "  GET /health"
-	@curl -sf -w "\n  Status: %{http_code}\n" http://localhost:8000/health 2>&1 | sed 's/^/  /' \
+	@curl -sf -w "\n  Status: %{http_code}\n" http://localhost:8080/health 2>&1 | sed 's/^/  /' \
 		|| echo "  $(RED)✗ /health inaccessible$(RESET)"
 	@echo "  GET /docs"
-	@curl -sf -o /dev/null -w "  Status: %{http_code}\n" http://localhost:8000/docs \
+	@curl -sf -o /dev/null -w "  Status: %{http_code}\n" http://localhost:8080/docs \
 		|| echo "  $(RED)✗ /docs inaccessible$(RESET)"
 
 
