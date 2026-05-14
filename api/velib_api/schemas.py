@@ -192,7 +192,8 @@ class ModelInfoResponse(BaseModel):
     """Réponse de l'endpoint /model/info — métadonnées du modèle chargé."""
 
     model_config = ConfigDict(
-        protected_namespaces=(),  # désactive l'avertissement Pydantic sur 'model_'
+        protected_namespaces=(),
+        extra="ignore",
         json_schema_extra={
             "example": {
                 "model_name": "velib_fill_rate_predictor",
@@ -211,3 +212,19 @@ class ModelInfoResponse(BaseModel):
     run_id: str
     framework: str = "xgboost"
     n_features: int
+
+
+class ModelReloadResponse(BaseModel):
+    """Réponse de l'endpoint POST /model/reload."""
+
+    model_config = ConfigDict(protected_namespaces=(), extra="ignore")
+
+    model_name: str
+    alias: str
+    previous_version: str = Field(..., description="Version MLflow avant le rechargement")
+    new_version: str = Field(..., description="Version MLflow après le rechargement")
+    run_id: str
+    framework: str = "xgboost"
+    n_features: int
+    taux_r2: float = Field(..., description="R² du nouveau modèle")
+    taux_mae: float = Field(..., description="MAE du nouveau modèle (pp)")

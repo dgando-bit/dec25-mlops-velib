@@ -54,7 +54,7 @@ L'architecture est pensée comme un mini-système MLOps end-to-end avec une cont
 | `build_features.py` (FE + split)       | ✅ Implémenté     | Feature engineering |
 | `train_model.py` (XGBoost + MLflow)    | ✅ Implémenté     | MLflow              |
 | Pipeline DVC (5 stages)                | ✅ Opérationnel   | DVC + DagsHub       |
-| API d'inférence (FastAPI)              | ✅ Opérationnelle (`status:ok`, modèle chargé) | FastAPI |
+| API d'inférence (FastAPI)              | ✅ Opérationnelle — 6 endpoints dont `POST /model/reload` | FastAPI |
 | Reverse proxy Nginx                    | ✅ Point d'entrée unique (API + MLflow + Jupyter + Prometheus + Grafana) | Nginx |
 | Monitoring Prometheus                  | ✅ Opérationnel (scrape API /metrics toutes les 15s) | Prometheus/Grafana  |
 | Dashboard Grafana                      | ✅ Validé visuellement (datasource uid fixe, panels alimentés) | Prometheus/Grafana  |

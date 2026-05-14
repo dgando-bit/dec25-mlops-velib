@@ -30,12 +30,12 @@ import numpy as np
 import pandas as pd
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.responses import RedirectResponse
-from prometheus_client import Gauge
+from prometheus_client import Counter, Gauge
 from prometheus_fastapi_instrumentator import Instrumentator
 from sklearn.pipeline import Pipeline
 
 from shared.logger import get_logger
-from velib_api.inference import FEATURES_FINAL, predict_with_confidence
+from velib_api.inference import FEATURES_FINAL, load_model_by_alias, predict_with_confidence
 from velib_api import __version__
 from velib_api.dependencies import get_model, preload_model
 from velib_api.schemas import (
@@ -43,6 +43,7 @@ from velib_api.schemas import (
     BatchPredictionResponse,
     HealthResponse,
     ModelInfoResponse,
+    ModelReloadResponse,
     PredictionResponse,
     StationFeatures,
 )
@@ -50,11 +51,12 @@ from velib_api.schemas import (
 # ─────────────────────────────────────────────────────────────────────────────
 # MÉTRIQUES PROMETHEUS CUSTOM
 # ─────────────────────────────────────────────────────────────────────────────
-MODEL_LOADED  = Gauge("velib_model_loaded",  "1 si le modèle est chargé, 0 sinon")
-MODEL_VERSION = Gauge("velib_model_version", "Version MLflow du modèle actif")
-MODEL_R2      = Gauge("velib_model_r2",      "R² score du modèle actif (taux)")
-MODEL_MAE     = Gauge("velib_model_mae",     "MAE du modèle actif (taux, pp)")
-MODEL_MAPE    = Gauge("velib_model_mape",    "MAPE du modèle actif (%)")
+MODEL_LOADED   = Gauge("velib_model_loaded",   "1 si le modèle est chargé, 0 sinon")
+MODEL_VERSION  = Gauge("velib_model_version",  "Version MLflow du modèle actif")
+MODEL_R2       = Gauge("velib_model_r2",       "R² score du modèle actif (taux)")
+MODEL_MAE      = Gauge("velib_model_mae",      "MAE du modèle actif (taux, pp)")
+MODEL_MAPE     = Gauge("velib_model_mape",     "MAPE du modèle actif (%)")
+MODEL_RELOADS  = Counter("velib_model_reloads_total", "Nombre de rechargements du modèle via /model/reload")
 
 logger = get_logger(__name__)
 
@@ -165,6 +167,49 @@ def model_info() -> ModelInfoResponse:
             ),
         )
     return ModelInfoResponse(**_MODEL_METADATA)
+
+
+@app.post(
+    "/model/reload",
+    response_model=ModelReloadResponse,
+    summary="Rechargement du modèle depuis le registry MLflow",
+    description=(
+        "Invalide le cache LRU, recharge le modèle `staging` depuis le registry "
+        "MLflow et met à jour les métriques Prometheus. "
+        "À appeler après la promotion d'une nouvelle version en alias `staging`."
+    ),
+    responses={
+        500: {"description": "Échec du rechargement"},
+    },
+)
+def model_reload() -> ModelReloadResponse:
+    previous_version = _MODEL_METADATA.get("version", "unknown")
+    try:
+        load_model_by_alias.cache_clear()
+        metadata = preload_model()
+        _MODEL_METADATA.clear()
+        _MODEL_METADATA.update(metadata)
+        MODEL_LOADED.set(1)
+        MODEL_VERSION.set(float(metadata.get("version", 0)))
+        MODEL_R2.set(metadata.get("taux_r2", 0.0))
+        MODEL_MAE.set(metadata.get("taux_mae", 0.0))
+        MODEL_MAPE.set(metadata.get("taux_mape", 0.0))
+        MODEL_RELOADS.inc()
+        logger.info(
+            "Modèle rechargé",
+            extra={"previous_version": previous_version, "new_version": metadata["version"]},
+        )
+        return ModelReloadResponse(
+            previous_version=previous_version,
+            new_version=metadata["version"],
+            **metadata,
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.exception("Échec du rechargement du modèle", extra={"error_type": type(e).__name__})
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Échec du rechargement : {type(e).__name__}",
+        )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
