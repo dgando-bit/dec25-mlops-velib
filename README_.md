@@ -57,7 +57,7 @@ L'architecture est pensée comme un mini-système MLOps end-to-end avec une cont
 | API d'inférence (FastAPI)              | ✅ Opérationnelle (`status:ok`, modèle chargé) | FastAPI |
 | Reverse proxy Nginx                    | ✅ Point d'entrée unique (API + MLflow + Jupyter + Prometheus + Grafana) | Nginx |
 | Monitoring Prometheus                  | ✅ Opérationnel (scrape API /metrics toutes les 15s) | Prometheus/Grafana  |
-| Dashboard Grafana                      | ✅ Provisionné (métriques API + modèle MLflow) | Prometheus/Grafana  |
+| Dashboard Grafana                      | ✅ Validé visuellement (datasource uid fixe, panels alimentés) | Prometheus/Grafana  |
 | Streamlit (démo jury)                  | ⏳ Phase 3        | Streamlit           |
 | Orchestration Airflow                  | ⏳ Phase 3        | Airflow             |
 | Drift detection (Evidently)            | ⏳ Phase 4        | Evidently           |
