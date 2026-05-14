@@ -75,6 +75,9 @@ def preload_model() -> dict:
         "velib_fill_rate_predictor", "staging"
     )
 
+    run = client.get_run(version_info.run_id)
+    run_metrics = run.data.metrics
+
     metadata = {
         "model_name": "velib_fill_rate_predictor",
         "alias": "staging",
@@ -82,6 +85,9 @@ def preload_model() -> dict:
         "run_id": version_info.run_id,
         "framework": "xgboost",
         "n_features": len(FEATURES_FINAL),
+        "taux_r2": float(run_metrics.get("taux_r2", 0.0)),
+        "taux_mae": float(run_metrics.get("taux_mae", 0.0)),
+        "taux_mape": float(run_metrics.get("taux_mape", 0.0)),
     }
 
     logger.info("Modèle pré-chargé avec succès", extra=metadata)

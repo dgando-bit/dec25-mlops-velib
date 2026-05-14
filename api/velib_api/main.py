@@ -30,6 +30,8 @@ import numpy as np
 import pandas as pd
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.responses import RedirectResponse
+from prometheus_client import Gauge
+from prometheus_fastapi_instrumentator import Instrumentator
 from sklearn.pipeline import Pipeline
 
 from shared.logger import get_logger
@@ -44,6 +46,15 @@ from velib_api.schemas import (
     PredictionResponse,
     StationFeatures,
 )
+
+# ─────────────────────────────────────────────────────────────────────────────
+# MÉTRIQUES PROMETHEUS CUSTOM
+# ─────────────────────────────────────────────────────────────────────────────
+MODEL_LOADED  = Gauge("velib_model_loaded",  "1 si le modèle est chargé, 0 sinon")
+MODEL_VERSION = Gauge("velib_model_version", "Version MLflow du modèle actif")
+MODEL_R2      = Gauge("velib_model_r2",      "R² score du modèle actif (taux)")
+MODEL_MAE     = Gauge("velib_model_mae",     "MAE du modèle actif (taux, pp)")
+MODEL_MAPE    = Gauge("velib_model_mape",    "MAPE du modèle actif (%)")
 
 logger = get_logger(__name__)
 
@@ -67,10 +78,14 @@ async def lifespan(app: FastAPI):
     try:
         metadata = preload_model()
         _MODEL_METADATA.update(metadata)
+        MODEL_LOADED.set(1)
+        MODEL_VERSION.set(float(metadata.get("version", 0)))
+        MODEL_R2.set(metadata.get("taux_r2", 0.0))
+        MODEL_MAE.set(metadata.get("taux_mae", 0.0))
+        MODEL_MAPE.set(metadata.get("taux_mape", 0.0))
         logger.info("API prête à recevoir des requêtes.")
     except Exception as e:  # noqa: BLE001
-        # Si le modèle ne charge pas, on continue quand même : /health renverra
-        # 'degraded' et l'utilisateur verra l'erreur sur /predict.
+        MODEL_LOADED.set(0)
         logger.exception(
             "Échec du pré-chargement du modèle — l'API démarre en mode dégradé",
             extra={"error_type": type(e).__name__},
@@ -96,6 +111,8 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
 )
+
+Instrumentator().instrument(app).expose(app, endpoint="/metrics")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
