@@ -55,7 +55,7 @@ L'architecture est pensée comme un mini-système MLOps end-to-end avec une cont
 | `train_model.py` (XGBoost + MLflow)    | ✅ Implémenté     | MLflow              |
 | Pipeline DVC (5 stages)                | ✅ Opérationnel   | DVC + DagsHub       |
 | API d'inférence (FastAPI)              | ✅ Implémentée    | FastAPI             |
-| Reverse proxy Nginx                    | ✅ Dockerfile     | Nginx               |
+| Reverse proxy Nginx                    | ✅ Point d'entrée unique (API + MLflow + Jupyter) | Nginx |
 | Monitoring Prometheus                  | ⚙️ Config présente | Prometheus/Grafana  |
 | Dashboard Grafana                      | ⏳ À faire        | Prometheus/Grafana  |
 | Streamlit (démo jury)                  | ⏳ Phase 3        | Streamlit           |
@@ -103,7 +103,7 @@ dec25-mlops-velib/
 │   ├── requirements.txt            ← dépendances ML
 │   ├── Dockerfile                  ← multi-stage : base / training / jupyter
 │   └── src/
-│       ├── main.py                 ← ⚠️ stub (2 lignes) — ne lance pas l'entraînement
+│       ├── main.py                 ← point d'entrée ml_training — appelle train_model.main()
 │       ├── data/
 │       │   ├── load_from_hf.py     ← stage 1 DVC ✅
 │       │   └── make_dataset.py     ← stage 2 DVC ✅
@@ -153,7 +153,7 @@ dec25-mlops-velib/
 └── deployments/
     ├── nginx/
     │   ├── Dockerfile
-    │   └── nginx.conf              ← rate limit 10r/s, A/B testing X-Experiment-Group
+    │   └── nginx.conf              ← point d'entrée unique : :8080→api, :5000→mlflow, :8888→jupyter
     └── prometheus/
         └── prometheus.yml          ← ⚙️ config présente, non configurée
 ```
