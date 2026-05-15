@@ -311,13 +311,14 @@ L'exécution manuelle des scripts est réservée au mode debug local (voir ci-de
 #### Mode nominal — Docker (recommandé)
 
 ```bash
-# Lance dvc repro dans le conteneur ml_training
-# Ré-exécute uniquement les stages dont les inputs ont changé
+# Lance dvc repro dans le conteneur ml_training, puis recharge automatiquement
+# le modèle dans l'API via POST /model/reload
 make pipeline
 ```
 
 Les 5 stages s'enchaînent dans l'ordre : `load_from_hf → make_dataset → dataviz → build_features → train_model`.
 MLflow est joignable via le réseau Docker interne (`mlflow-server:5000`), PostgreSQL est utilisé comme backend.
+En fin de pipeline, `make pipeline` appelle automatiquement `POST /model/reload` pour que l'API serve immédiatement le nouveau modèle sans redémarrage.
 
 | Stage | Durée estimée | Sortie principale |
 |---|---|---|
@@ -326,6 +327,7 @@ MLflow est joignable via le réseau Docker interne (`mlflow-server:5000`), Postg
 | dataviz | ~10 s | `data/outputs/plots/dataviz_report.html` |
 | build_features | ~20 s | `data/processed/{train,test}_preprocessed.parquet` |
 | train_model | ~2–5 min | modèle promu alias `staging` dans MLflow Registry |
+| reload API | ~2 s | `POST /model/reload` → API passe en `status: ok` |
 
 #### Mode debug local — hors Docker
 
