@@ -55,6 +55,9 @@ services:
       - ./data:/app/data
       - ./shared:/app/shared
       - ./mlflow/artifacts:/app/mlflow/artifacts
+      - ./dvc.yaml:/app/dvc.yaml
+      - ./dvc.lock:/app/dvc.lock
+      - ./.dvc:/app/.dvc
     networks:
       - mlops-net
     depends_on:
