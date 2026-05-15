@@ -331,6 +331,8 @@ pipeline:
 	@echo "$(CYAN)→ Exécution du pipeline DVC...$(RESET)"
 	@mkdir -p mlflow/artifacts data/raw data/interim data/processed data/outputs/plots
 	$(COMPOSE) -f $(COMPOSE_FILE) run --rm ml_training dvc repro
+	@echo "$(CYAN)→ Rechargement du modèle dans l'API...$(RESET)"
+	@curl -s -X POST http://localhost:8080/model/reload | python3 -m json.tool 2>/dev/null | sed 's/^/  /' || echo "  $(YELLOW)⚠ API non joignable — lance make health pour vérifier$(RESET)"
 	@echo "$(GREEN)✓ Pipeline terminé$(RESET)"
 
 
