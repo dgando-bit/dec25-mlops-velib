@@ -329,6 +329,7 @@ dvc-add:
 
 pipeline:
 	@echo "$(CYAN)→ Exécution du pipeline DVC...$(RESET)"
+	@mkdir -p mlflow/artifacts data/raw data/interim data/processed data/outputs/plots
 	$(COMPOSE) -f $(COMPOSE_FILE) run --rm ml_training dvc repro
 	@echo "$(GREEN)✓ Pipeline terminé$(RESET)"
 
