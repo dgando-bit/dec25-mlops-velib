@@ -232,7 +232,7 @@ health:
 	@echo ""
 
 	@echo "$(BOLD)[1/4] PostgreSQL (mlflow-db)$(RESET)"
-	@if docker exec dec25-mlops-mlflow-db pg_isready -U $$(grep MLFLOW_USER $(ENV_FILE) | cut -d= -f2) > /dev/null 2>&1; then \
+	@if $(COMPOSE) -f $(COMPOSE_FILE) exec mlflow-db pg_isready -U $$(grep MLFLOW_USER $(ENV_FILE) | cut -d= -f2) > /dev/null 2>&1; then \
 		echo "  $(GREEN)✓ PostgreSQL opérationnel$(RESET)"; \
 	else \
 		echo "  $(RED)✗ PostgreSQL ne répond pas$(RESET)"; \
@@ -279,7 +279,7 @@ test-mlflow:
 		&& echo "  $(GREEN)✓ MLflow API répond$(RESET)" \
 		|| echo "  $(RED)✗ MLflow API inaccessible$(RESET)"
 	@echo "$(CYAN)→ Test de connexion à la DB depuis mlflow-server...$(RESET)"
-	@docker exec dec25-mlops-mlflow-server python -c \
+	@$(COMPOSE) -f $(COMPOSE_FILE) exec mlflow-server python -c \
 		"import mlflow; mlflow.set_tracking_uri('http://localhost:5000'); print('  $(GREEN)✓ MLflow client OK$(RESET)')" \
 		2>/dev/null || echo "  $(RED)✗ Erreur client MLflow$(RESET)"
 
@@ -342,10 +342,10 @@ shell-api:
 	docker exec -it velib_api /bin/bash
 
 shell-ml:
-	docker exec -it velib_ml /bin/bash
+	$(COMPOSE) -f $(COMPOSE_FILE) exec ml_training /bin/bash
 
 shell-jupyter:
-	docker exec -it dec25-mlops-jupyter /bin/bash
+	$(COMPOSE) -f $(COMPOSE_FILE) exec jupyter-service /bin/bash
 
 
 # =============================================================================
