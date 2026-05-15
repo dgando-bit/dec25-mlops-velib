@@ -155,25 +155,31 @@ dec25-mlops-velib/
     │   ├── Dockerfile
     │   └── nginx.conf              ← point d'entrée unique : :8080→api, :5000→mlflow, :8888→jupyter
     └── prometheus/
-        └── prometheus.yml          ← ⚙️ config présente, non configurée
+        └── prometheus.yml          ← config Prometheus (scrape API /metrics toutes les 15s)
 ```
 
 > **Ports d'accès (tous via Nginx) :**
-> - API FastAPI → `http://localhost:8080`
-> - MLflow UI  → `http://localhost:5000`
-> - JupyterLab → `http://localhost:8888`
+> - API FastAPI  → `http://localhost:8080`
+> - MLflow UI   → `http://localhost:${MLFLOW_PORT}` (défaut `.env.example` : `5000`)
+> - JupyterLab  → `http://localhost:8888`
+> - Prometheus  → `http://localhost:9090`
+> - Grafana     → `http://localhost:3000`
 
 ---
 
 ## Prérequis
 
 - **WSL2 + Ubuntu** (sur Windows) ou Linux/macOS natif
-- **Python 3.11 ou 3.12** (recommandé : 3.12)
+- **Docker Desktop** (Windows) ou **Docker Engine + Docker Compose v2** (Linux/macOS)
+  - Vérifier : `docker compose version` doit renvoyer `v2.x.x` (avec espace, sans tiret)
 - **Git**
+- **Python 3.11 ou 3.12** (recommandé : 3.12) — uniquement pour le mode debug local (étapes §3–5)
 - **VSCode** avec extension WSL recommandé pour le développement
 - Un compte **HuggingFace** (pour générer un token Read accédant au dataset `voroman/velib-ml-data`)
 
 > **Important** : si tu travailles sous Windows, **tout doit se faire depuis un terminal WSL**, jamais depuis PowerShell ou CMD. Les paquets Python (numpy, scikit-learn, pyarrow) n'ont pas de wheel précompilée pour les versions Python récentes sous Windows et tenteraient de compiler depuis les sources, ce qui plante.
+
+> **Instances multiples sur la même machine** : la variable `COMPOSE_PROJECT_NAME` dans `.env` préfixe tous les conteneurs et volumes générés par Compose. Pour faire coexister deux instances (ex. dev et test de reproductibilité), changer cette valeur dans chaque `.env` (`velib-dev`, `velib-test`, etc.). Par défaut elle vaut `velib`.
 
 ---
 
@@ -204,12 +210,14 @@ wsl
 cd ~
 git clone https://github.com/dgando-bit/dec25-mlops-velib.git
 cd dec25-mlops-velib
-git checkout add-rectification-global
+git checkout feat-monitoring-prometheus-grafana
 ```
 
-> **Important** : la branche `main` contient une version antérieure du projet sans la configuration HF. Reste sur `add-rectification-global` pour disposer du pipeline complet.
+> Cette branche contient la stack complète : pipeline DVC, API FastAPI, Nginx, MLflow, Prometheus et Grafana.
 
 ### 3. Créer un environnement virtuel Python
+
+> **Mode Docker (nominal)** : les étapes §3, §4 et §5 ne sont pas nécessaires pour lancer le pipeline via `make pipeline`. Passe directement à l'étape §6 si tu utilises uniquement Docker. Ces étapes sont réservées au mode debug local (exécution des scripts Python hors Docker).
 
 C'est **non négociable** — sans `venv`, tu vas mélanger les dépendances de ce projet avec celles de tes autres projets et créer des conflits illisibles.
 
@@ -250,6 +258,8 @@ pip install -r ml/requirements.txt
 L'installation prend 2-4 minutes selon ta connexion. Tu verras des téléchargements de wheels (`numpy`, `pandas`, `mlflow`, `plotly`, etc.) — c'est normal.
 
 ### 6. Configurer le fichier .env
+
+> ⚠️ **Requis avant tout `make`** : sans ce fichier, `docker compose` échoue au démarrage avec une erreur `env file not found`.
 
 ```bash
 cp .env.example .env
@@ -378,6 +388,8 @@ print(df['taux'].describe())
 ```
 
 ### Travailler avec le pipeline DVC
+
+> **Mode debug local uniquement** : les commandes ci-dessous nécessitent un venv actif avec DVC installé (`pip install -r ml/requirements.txt`). En mode Docker nominal, utiliser `make pipeline` à la place.
 
 ```bash
 dvc dag                # affiche le graphe des 5 stages
