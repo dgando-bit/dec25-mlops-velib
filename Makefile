@@ -309,17 +309,17 @@ train:
 
 dvc-pull:
 	@echo "$(CYAN)→ Récupération des données depuis DagsHub...$(RESET)"
-	dvc pull
+	$(COMPOSE) -f $(COMPOSE_FILE) run --rm ml_training dvc pull
 	@echo "$(GREEN)✓ Données récupérées$(RESET)"
 
 dvc-push:
 	@echo "$(CYAN)→ Push des données vers DagsHub...$(RESET)"
-	dvc push
+	$(COMPOSE) -f $(COMPOSE_FILE) run --rm ml_training dvc push
 	@echo "$(GREEN)✓ Données envoyées$(RESET)"
 
 dvc-status:
 	@echo "$(CYAN)→ État des données DVC...$(RESET)"
-	dvc status
+	$(COMPOSE) -f $(COMPOSE_FILE) run --rm ml_training dvc status
 
 dvc-add:
 	@echo "$(CYAN)→ Tracking des changements dans data/...$(RESET)"

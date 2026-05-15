@@ -9,8 +9,8 @@ stages:
       size: 13470
     - path: shared/shared/config.py
       hash: md5
-      md5: 5e594bdcf7a60845d0ac5bc09be7f12e
-      size: 13813
+      md5: 6a2f755f1dbf9af5d8ca1ff9f9a61c23
+      size: 14226
     - path: shared/shared/logger.py
       hash: md5
       md5: 1f9e517a10e1a7ce9813cfed6e769596
@@ -18,23 +18,23 @@ stages:
     outs:
     - path: data/raw/velib_snapshot_latest.parquet
       hash: md5
-      md5: 0b88ea935e7255491e2c1658473443f8
-      size: 10967397
+      md5: 46eae25dc85041a64a26d8e0c0d242c5
+      size: 19690493
   make_dataset:
     cmd: python -m ml.src.data.make_dataset
     deps:
     - path: data/raw/velib_snapshot_latest.parquet
       hash: md5
-      md5: 0b88ea935e7255491e2c1658473443f8
-      size: 10967397
+      md5: 46eae25dc85041a64a26d8e0c0d242c5
+      size: 19690493
     - path: ml/src/data/make_dataset.py
       hash: md5
       md5: c369dd30f4b65137e5cf847fc13ae4d6
       size: 11746
     - path: shared/shared/config.py
       hash: md5
-      md5: 5e594bdcf7a60845d0ac5bc09be7f12e
-      size: 13813
+      md5: 6a2f755f1dbf9af5d8ca1ff9f9a61c23
+      size: 14226
     - path: shared/shared/logger.py
       hash: md5
       md5: 1f9e517a10e1a7ce9813cfed6e769596
@@ -46,27 +46,27 @@ stages:
     outs:
     - path: data/interim/velib_cleaned_latest.parquet
       hash: md5
-      md5: 575babff0c30baa1045394b7e116a73e
-      size: 15896777
+      md5: a9b09c5b646ff5d875d00d7d337f917a
+      size: 26249042
   dataviz:
     cmd: python -m ml.src.visualization.dataviz
     deps:
     - path: data/interim/velib_cleaned_latest.parquet
       hash: md5
-      md5: 575babff0c30baa1045394b7e116a73e
-      size: 15896777
+      md5: a9b09c5b646ff5d875d00d7d337f917a
+      size: 26249042
     - path: data/raw/velib_snapshot_latest.parquet
       hash: md5
-      md5: 0b88ea935e7255491e2c1658473443f8
-      size: 10967397
+      md5: 46eae25dc85041a64a26d8e0c0d242c5
+      size: 19690493
     - path: ml/src/visualization/dataviz.py
       hash: md5
       md5: ea8504cf3431d27149c0eac5c818c5d4
       size: 39154
     - path: shared/shared/config.py
       hash: md5
-      md5: 5e594bdcf7a60845d0ac5bc09be7f12e
-      size: 13813
+      md5: 6a2f755f1dbf9af5d8ca1ff9f9a61c23
+      size: 14226
     - path: shared/shared/logger.py
       hash: md5
       md5: 1f9e517a10e1a7ce9813cfed6e769596
@@ -78,15 +78,15 @@ stages:
     outs:
     - path: data/outputs/plots/dataviz_report.html
       hash: md5
-      md5: f6e44b0fb18ca58ee08aefdef47df56e
-      size: 112490291
+      md5: a8e1a05671c412e6bff61be18b2f90af
+      size: 213524770
   build_features:
     cmd: python -m ml.src.features.build_features
     deps:
     - path: data/interim/velib_cleaned_latest.parquet
       hash: md5
-      md5: 575babff0c30baa1045394b7e116a73e
-      size: 15896777
+      md5: a9b09c5b646ff5d875d00d7d337f917a
+      size: 26249042
     - path: ml/src/features/_helpers.py
       hash: md5
       md5: bcb7acac797aeac9703944aa20ce4c89
@@ -97,8 +97,8 @@ stages:
       size: 12188
     - path: shared/shared/config.py
       hash: md5
-      md5: 5e594bdcf7a60845d0ac5bc09be7f12e
-      size: 13813
+      md5: 6a2f755f1dbf9af5d8ca1ff9f9a61c23
+      size: 14226
     - path: shared/shared/logger.py
       hash: md5
       md5: 1f9e517a10e1a7ce9813cfed6e769596
@@ -110,39 +110,39 @@ stages:
     outs:
     - path: data/processed/stations_geo.parquet
       hash: md5
-      md5: adae411505769fb4440807014467fcd8
-      size: 56021
+      md5: 6632422bf1d1086899bb0fba3cfb859a
+      size: 56107
     - path: data/processed/test_preprocessed.parquet
       hash: md5
-      md5: 92917a577c94d07c5cefc407ce8aa8ff
-      size: 8100555
+      md5: fc7e5bbdc478447dff9be04c0b4ae535
+      size: 12408399
     - path: data/processed/train_preprocessed.parquet
       hash: md5
-      md5: 9f92d47aa8b7f20fe1c52de200bf8d9b
-      size: 32449846
+      md5: 33745cbec74332b9d41dd36352fa498d
+      size: 51763658
   train_model:
     cmd: python -m ml.src.models.train_model
     deps:
     - path: data/processed/test_preprocessed.parquet
       hash: md5
-      md5: 92917a577c94d07c5cefc407ce8aa8ff
-      size: 8100555
+      md5: fc7e5bbdc478447dff9be04c0b4ae535
+      size: 12408399
     - path: data/processed/train_preprocessed.parquet
       hash: md5
-      md5: 9f92d47aa8b7f20fe1c52de200bf8d9b
-      size: 32449846
+      md5: 33745cbec74332b9d41dd36352fa498d
+      size: 51763658
     - path: ml/src/models/_helpers.py
       hash: md5
       md5: 04de9f0e24e578ec67b9e66391077b9c
       size: 12540
     - path: ml/src/models/train_model.py
       hash: md5
-      md5: 85eb62ce6f9a54b073759830b4262aaf
-      size: 17755
+      md5: 96815770651708dd195b50abc5d292a3
+      size: 17636
     - path: shared/shared/config.py
       hash: md5
-      md5: 5e594bdcf7a60845d0ac5bc09be7f12e
-      size: 13813
+      md5: 6a2f755f1dbf9af5d8ca1ff9f9a61c23
+      size: 14226
     - path: shared/shared/logger.py
       hash: md5
       md5: 1f9e517a10e1a7ce9813cfed6e769596
@@ -150,17 +150,17 @@ stages:
     outs:
     - path: data/outputs/feature_importance.png
       hash: md5
-      md5: 52610778e26bcea7a2ce8a6b8515e34b
-      size: 64879
+      md5: bd5e511c6d4db11a63dfc26cddfbc205
+      size: 63641
     - path: data/outputs/metrics.json
       hash: md5
-      md5: 234713ee1cb56886c26a49255412bdae
+      md5: 0c8a4a7b183aaf24e621388ab64bb519
       size: 391
     - path: data/outputs/predictions_vs_actual.png
       hash: md5
-      md5: 6fa54ce4ecde94ffa1ae017373f1e695
-      size: 420746
+      md5: 6c0416d1dc2e342c964a1372b16edd97
+      size: 391264
     - path: data/outputs/residuals_distribution.png
       hash: md5
-      md5: a5d89a54f35da97546f287cc34b45e30
-      size: 45486
+      md5: 0f380bab953f8064583404fca322819f
+      size: 47327
