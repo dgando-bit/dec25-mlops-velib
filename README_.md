@@ -291,36 +291,50 @@ cd ~/dec25-mlops-velib
 source .venv/bin/activate
 ```
 
-### Lancer le pipeline complet (étapes implémentées)
+### Lancer le pipeline complet
 
-Le pipeline s'exécute en **3 étapes successives**, chacune dépendant de la précédente :
+**En production et en intégration, le pipeline se lance exclusivement via Docker + DVC.**
+L'exécution manuelle des scripts est réservée au mode debug local (voir ci-dessous).
+
+#### Mode nominal — Docker (recommandé)
 
 ```bash
-# Étape 1 — télécharger le snapshot HF
-# Durée : ~30 secondes (réseau + download 734 Mo CSV → 8.7 Mo parquet)
-python -m ml.src.data.load_from_hf
-
-# Étape 2 — nettoyer le snapshot
-# Durée : ~5 secondes (5M lignes → 4.9M lignes après filtres)
-python -m ml.src.data.make_dataset
-
-# Étape 3 — générer le rapport visuel
-# Durée : ~10 secondes (7 graphes interactifs Plotly)
-# Sortie : data/outputs/plots/dataviz_report.html (~110 Mo)
-python -m ml.src.visualization.dataviz
-
-# Étape 4 — feature engineering
-# Durée : ~20 secondes (24 features, split train/test temporel)
-python -m ml.src.features.build_features
-
-# Étape 5 — entraînement XGBoost + tracking MLflow
-# Durée : ~2-5 minutes selon la machine
-# Sortie : modèle promu alias 'staging' dans le MLflow Registry
-python -m ml.src.models.train_model
+# Lance dvc repro dans le conteneur ml_training
+# Ré-exécute uniquement les stages dont les inputs ont changé
+make pipeline
 ```
 
-> **Variante DVC** : `dvc repro` ré-exécute uniquement les stages dont les inputs ont changé.
-> `make pipeline` lance `dvc repro` dans le conteneur `ml_training` (nécessite Docker).
+Les 5 stages s'enchaînent dans l'ordre : `load_from_hf → make_dataset → dataviz → build_features → train_model`.
+MLflow est joignable via le réseau Docker interne (`mlflow-server:5000`), PostgreSQL est utilisé comme backend.
+
+| Stage | Durée estimée | Sortie principale |
+|---|---|---|
+| load_from_hf | ~30 s | `data/raw/velib_snapshot_latest.parquet` |
+| make_dataset | ~5 s | `data/interim/velib_cleaned_latest.parquet` |
+| dataviz | ~10 s | `data/outputs/plots/dataviz_report.html` |
+| build_features | ~20 s | `data/processed/{train,test}_preprocessed.parquet` |
+| train_model | ~2–5 min | modèle promu alias `staging` dans MLflow Registry |
+
+#### Mode debug local — hors Docker
+
+> ⚠️ **Contrainte connue** : `train_model` se connecte par défaut à `http://mlflow-server:5000`,
+> nom de service Docker non résolvable hors du réseau `mlops-net`.
+> Les étapes 1 à 4 fonctionnent sans Docker. L'étape 5 requiert de surcharger le tracking URI.
+
+```bash
+# Étapes 1 à 4 — exécutables directement depuis le venv local
+python -m ml.src.data.load_from_hf
+python -m ml.src.data.make_dataset
+python -m ml.src.visualization.dataviz
+python -m ml.src.features.build_features
+
+# Étape 5 — surcharger le tracking URI pour pointer sur SQLite local
+# (pas de serveur MLflow requis, le registre est écrit dans mlflow.db)
+MLFLOW_TRACKING_URI=sqlite:///mlflow.db python -m ml.src.models.train_model
+```
+
+> En production réelle, le tracking URI serait injecté par l'orchestrateur (Airflow, Prefect…)
+> via un Secret Manager centralisé — jamais surclassé manuellement.
 
 ### Ouvrir le rapport visuel
 
