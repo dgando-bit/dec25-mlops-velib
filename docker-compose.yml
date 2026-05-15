@@ -58,6 +58,7 @@ services:
       - ./dvc.yaml:/app/dvc.yaml
       - ./dvc.lock:/app/dvc.lock
       - ./.dvc:/app/.dvc
+      - ./.git:/app/.git:ro
     networks:
       - mlops-net
     depends_on:
