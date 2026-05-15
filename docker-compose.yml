@@ -50,6 +50,7 @@ services:
       target: training
     environment:
       MLFLOW_TRACKING_URI: http://mlflow-server:5000
+      MODEL_STAGE: ${ML_MODEL_STAGE}
     volumes:
       - ./ml:/app/ml
       - ./data:/app/data
@@ -102,10 +103,14 @@ services:
       - mlflow-server
     environment:
       MLFLOW_TRACKING_URI: http://mlflow-server:5000
+      MODEL_STAGE: ${API_MODEL_STAGE}
     volumes:
-      - ./mlflow/artifacts:/app/mlflow/artifacts
+      - ./api:/app/api
+      - ./shared:/app/shared
+      - ./mlflow/artifacts:/mlflow/artifacts
     networks:
       - mlops-net
+    command: uvicorn api.velib_api.main:app --host 0.0.0.0 --port 8000 --reload
 
   prometheus:
     image: prom/prometheus:latest
@@ -134,11 +139,11 @@ services:
       - prometheus
     networks:
       - mlops-net
-
   nginx:
     build:
       context: deployments/nginx/
       dockerfile: Dockerfile
+    container_name: nginx_revproxy
     ports:
       - "8080:80"
       - "${MLFLOW_PORT}:5000"
