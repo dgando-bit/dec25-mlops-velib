@@ -153,7 +153,7 @@ dec25-mlops-velib/
 └── deployments/
     ├── nginx/
     │   ├── Dockerfile
-    │   └── nginx.conf              ← point d'entrée unique : :8080→api, :5000→mlflow, :8888→jupyter
+    │   └── nginx.conf              ← point d'entrée unique : :8080→api, :5000→mlflow, :8888→jupyter, :9090→prometheus, :3000→grafana
     └── prometheus/
         └── prometheus.yml          ← config Prometheus (scrape API /metrics toutes les 15s)
 ```
@@ -294,7 +294,9 @@ Si la sortie affiche `Token chargé: True`, c'est gagné.
 
 ## Utilisation quotidienne
 
-### Activer le venv (à chaque nouveau terminal)
+### Activer le venv (mode debug local uniquement)
+
+> En mode Docker nominal, cette étape n'est pas nécessaire. Le venv n'est utile que pour exécuter les scripts Python directement hors conteneur.
 
 ```bash
 cd ~/dec25-mlops-velib
