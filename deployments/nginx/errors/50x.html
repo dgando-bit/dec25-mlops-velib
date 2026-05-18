@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>5xx — Erreur serveur · Vélib' MLOps</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+      background: #fff8f8;
+      color: #2d3748;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 2rem;
+    }
+    .card {
+      background: #fff;
+      border-radius: 14px;
+      box-shadow: 0 4px 32px rgba(0,0,0,0.08);
+      border-top: 4px solid #e53e3e;
+      padding: 3.5rem 4rem;
+      max-width: 540px;
+      width: 100%;
+      text-align: center;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      background: #f0faf0;
+      color: #2e7d32;
+      border: 1px solid #c8e6c9;
+      border-radius: 20px;
+      padding: 0.3rem 1rem;
+      font-size: 0.78rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      margin-bottom: 2rem;
+    }
+    .badge::before { content: "🚲"; font-size: 0.9rem; }
+    .code {
+      font-size: 6rem;
+      font-weight: 900;
+      color: #fed7d7;
+      line-height: 1;
+      letter-spacing: -4px;
+      margin-bottom: 0.75rem;
+    }
+    .icon { font-size: 2.5rem; margin-bottom: 1rem; }
+    h1 {
+      font-size: 1.35rem;
+      font-weight: 700;
+      color: #1a202c;
+      margin-bottom: 0.75rem;
+    }
+    p {
+      color: #718096;
+      font-size: 0.92rem;
+      line-height: 1.7;
+      margin-bottom: 1.5rem;
+    }
+    .alert {
+      background: #fff5f5;
+      border: 1px solid #fed7d7;
+      border-radius: 8px;
+      padding: 0.9rem 1.2rem;
+      margin-bottom: 2rem;
+      text-align: left;
+    }
+    .alert-title {
+      font-size: 0.82rem;
+      font-weight: 700;
+      color: #c53030;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-bottom: 0.35rem;
+    }
+    .alert p { font-size: 0.85rem; color: #742a2a; margin-bottom: 0.5rem; }
+    .alert p:last-child { margin-bottom: 0; }
+    code {
+      background: #fff5f5;
+      border: 1px solid #fed7d7;
+      border-radius: 4px;
+      padding: 0.1em 0.4em;
+      font-family: 'SFMono-Regular', Consolas, monospace;
+      font-size: 0.85em;
+      color: #c53030;
+    }
+    .links {
+      display: flex;
+      gap: 0.75rem;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin-bottom: 2rem;
+    }
+    a {
+      display: inline-block;
+      text-decoration: none;
+      padding: 0.55rem 1.4rem;
+      border-radius: 8px;
+      font-size: 0.875rem;
+      font-weight: 600;
+      transition: opacity 0.15s, transform 0.15s;
+    }
+    a:hover { opacity: 0.85; transform: translateY(-1px); }
+    .btn-primary { background: #5bac3a; color: #fff; }
+    .btn-secondary { background: #edf2f7; color: #4a5568; }
+    .divider { border: none; border-top: 1px solid #edf2f7; margin: 0 0 1.5rem; }
+    .footer { font-size: 0.72rem; color: #b0bec5; }
+    .status-dot {
+      display: inline-block;
+      width: 8px; height: 8px;
+      background: #e53e3e;
+      border-radius: 50%;
+      margin-right: 0.3rem;
+      animation: pulse 1.5s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="badge">Vélib' MLOps</div>
+    <div class="code">5xx</div>
+    <div class="icon">⚠️</div>
+    <h1>Erreur interne du serveur</h1>
+    <p>
+      Un service en amont ne répond pas correctement.<br>
+      Il peut s'agir d'un redémarrage en cours, d'une surcharge temporaire<br>
+      ou d'un problème de connectivité.
+    </p>
+    <div class="alert">
+      <div class="alert-title">Diagnostics rapides</div>
+      <p>→ <code>make health</code> — vérifier l'état de tous les services</p>
+      <p>→ <code>make logs-api</code> — consulter les logs de l'API</p>
+      <p>→ <code>POST /model/reload</code> — recharger le modèle si l'API est en mode dégradé</p>
+    </div>
+    <div class="links">
+      <a href="/health" class="btn-primary">Status API</a>
+      <a href="/docs" class="btn-secondary">Documentation</a>
+    </div>
+    <hr class="divider">
+    <p class="footer">
+      <span class="status-dot"></span>
+      Vélib' MLOps · Nginx reverse proxy · HTTP 500 / 502 / 503 / 504
+    </p>
+  </div>
+</body>
+</html>

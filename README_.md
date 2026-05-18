@@ -55,7 +55,7 @@ L'architecture est pensée comme un mini-système MLOps end-to-end avec une cont
 | `train_model.py` (XGBoost + MLflow)    | ✅ Implémenté     | MLflow              |
 | Pipeline DVC (5 stages)                | ✅ Opérationnel   | DVC + DagsHub       |
 | API d'inférence (FastAPI)              | ✅ Opérationnelle — 6 endpoints dont `POST /model/reload` | FastAPI |
-| Reverse proxy Nginx                    | ✅ Point d'entrée unique (API + MLflow + Jupyter + Prometheus + Grafana) | Nginx |
+| Reverse proxy Nginx                    | ✅ Point d'entrée unique + pages d'erreur personnalisées (404/429/50x) | Nginx |
 | Monitoring Prometheus                  | ✅ Opérationnel (scrape API /metrics toutes les 15s) | Prometheus/Grafana  |
 | Dashboard Grafana                      | ✅ Validé visuellement (datasource uid fixe, panels alimentés) | Prometheus/Grafana  |
 | Tests unitaires pytest                 | ✅ Phase 2 — 94 tests (API, ML, shared) avec modèle XGBoost fixture | pytest |
@@ -737,6 +737,25 @@ Tu n'es **pas** dans WSL. Vérifie l'invite : si elle commence par `PS C:\` ou `
 - `add-rectification-global` : branche active (pipeline complet)
 - `feat/<nom>` : nouvelles fonctionnalités
 - `fix/<nom>` : corrections
+
+---
+
+## Pages d'erreur Nginx personnalisées
+
+Trois pages HTML brandées Vélib' MLOps sont servies par Nginx en cas d'erreur :
+
+| Code | Fichier | Déclencheur |
+|------|---------|-------------|
+| 404 | `deployments/nginx/errors/404.html` | Route inexistante sur l'API |
+| 429 | `deployments/nginx/errors/429.html` | Rate limiting dépassé (> 10 req/s, burst 20) |
+| 50x | `deployments/nginx/errors/50x.html` | Erreur interne API ou upstream indisponible |
+
+### Configuration
+
+- `limit_req_status 429` — nginx retourne 429 (au lieu de 503) en cas de rate limiting
+- `proxy_intercept_errors on` — nginx intercepte les erreurs upstream sur le bloc API (port 80)
+- Les fichiers sont montés en lecture seule : `./deployments/nginx/errors:/etc/nginx/errors:ro`
+- `location ^~ /errors/ { root /etc/nginx; internal; }` — bloc interne, non accessible directement depuis le client
 
 ---
 
