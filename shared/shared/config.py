@@ -178,12 +178,31 @@ class Settings(BaseSettings):
         description="Délai initial avant retry (secondes). Backoff exponentiel ensuite.",
     )
 
-    # MLflow
-    mlflow_tracking_uri: str = "http://mlflow-server:5000"
-    mlflow_artifact_uri: str = "file:///app/mlflow/artifacts"
-    mlflow_experiment_name: str = "velib-metropole"
-    mlflow_run_name: str = "velib-metropole-run"
-    mlflow_model_name: str = "velib-metropole-model"
+    # ─────────────────────────────────────────────────────────────────────────
+    # MLFLOW — tracking & registry
+    # ─────────────────────────────────────────────────────────────────────────
+    mlflow_tracking_uri: str = Field(
+        default="http://mlflow-server:5000",
+        description="URI du serveur MLflow. En Docker : http://mlflow-server:5000 "
+                    "(résolu via le réseau Compose). En local : surcharger via "
+                    "MLFLOW_TRACKING_URI=http://localhost:5000.",
+    )
+    mlflow_artifact_uri: str = Field(
+        default="file:///app/mlflow/artifacts",
+        description="URI de stockage des artefacts MLflow (bind mount Docker).",
+    )
+    mlflow_experiment_name: str = Field(
+        default="velib-metropole",
+        description="Nom de l'expérience MLflow.",
+    )
+    mlflow_run_name: str = Field(
+        default="velib-metropole-run",
+        description="Nom de base des runs MLflow.",
+    )
+    mlflow_model_name: str = Field(
+        default="velib-metropole-model",
+        description="Nom du modèle dans le MLflow Registry.",
+    )
 
     # ─────────────────────────────────────────────────────────────────────────
     # VALIDATEURS
