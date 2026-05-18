@@ -220,7 +220,52 @@ L'UI Airflow est accessible via Nginx sur `http://localhost:8090`.
 
 ---
 
-## 10. Collecte continue (infrastructure HF)
+## 10. Application de démonstration Streamlit
+
+L'application Streamlit est le point d'entrée de la présentation pour le jury. Elle expose l'intégralité du projet en trois pages accessibles sur `http://localhost:8501` (via Nginx).
+
+### Structure des pages
+
+#### Page 1 — Accueil
+Vue d'ensemble du projet en temps réel :
+- **Badges de statut** : chaque service (API, MLflow, Prometheus, Grafana, Airflow) est interrogé toutes les 15 secondes — l'état s'affiche en vert, orange ou rouge
+- **Architecture** : schéma du pipeline et tableau de la stack technique
+- **Métriques du modèle** : R², MAE, RMSE, stations couvertes
+- **Liens directs** vers les interfaces natives : MLflow UI, Grafana, Airflow, JupyterLab, Prometheus, Swagger
+
+#### Page 2 — Validation des services
+Tests fonctionnels en temps réel, organisés par onglet :
+
+| Onglet | Tests effectués |
+|--------|-----------------|
+| API FastAPI | `GET /health`, `GET /model/info`, `POST /predict`, `POST /predict/batch`, `GET /metrics` |
+| MLflow | Liste des expériences, liste des modèles enregistrés et leurs alias |
+| Prometheus | Endpoint `/-/healthy`, liste des targets actifs et leur état |
+| Grafana | Endpoint `/api/health`, version et état de la base |
+| Airflow | Endpoint `/health`, état du scheduler et de la metabase |
+| Nginx | Test 404 (route inexistante → page personnalisée), test 429 (25 requêtes en rafale → rate limit) |
+| Tests pytest | Boutons pour lancer `pytest api/tests/` (27 tests) et `pytest ml/tests/ shared/tests/` (56 tests) via `docker compose run` — résultats affichés en temps réel |
+
+#### Page 3 — Prédiction MVP
+Démonstration du cas d'usage métier :
+1. Sélection d'une station parmi 15 stations parisiennes représentatives
+2. Définition du contexte : heure (actuelle ou manuelle), jour de la semaine, température ressentie, anomalie thermique, sévérité météo, occupation récente (lags 60 min / 240 min), jours fériés / vacances
+3. Appel `POST /predict` en temps réel
+4. Visualisation : **jauge Plotly** (0–100 %) avec zones colorées, **badge d'alerte** green / yellow / red, métriques détaillées (taux prédit, résidu, tendance historique)
+
+### Démarrage
+
+```bash
+make up            # Démarrer toute la stack (inclut Streamlit)
+# ou uniquement Streamlit si la stack tourne déjà :
+make streamlit-up
+```
+
+L'application est disponible sur `http://localhost:8501`.
+
+---
+
+## 11. Collecte continue (infrastructure HF)
 
 La collecte tourne 24/7 sur des services free tier, sans coût d'infrastructure :
 
@@ -235,7 +280,7 @@ La collecte tourne 24/7 sur des services free tier, sans coût d'infrastructure 
 
 ---
 
-## 11. État d'avancement
+## 12. État d'avancement
 
 | Composant | État |
 |---|---|
@@ -244,22 +289,18 @@ La collecte tourne 24/7 sur des services free tier, sans coût d'infrastructure 
 | Rapport Plotly (7 graphes) | ✅ Généré à chaque run |
 | Modèle XGBoost + MLflow Registry | ✅ R² = 0,833 |
 | API FastAPI (6 endpoints) | ✅ Mode dégradé, rechargement à chaud |
-| Reverse proxy Nginx | ✅ Point d'entrée unique |
+| Reverse proxy Nginx + pages d'erreur | ✅ Point d'entrée unique (404/429/50x) |
 | Monitoring Prometheus + Grafana | ✅ Dashboard provisionné |
 | Tests unitaires (94 tests) | ✅ CI hermétique |
 | Orchestration Airflow | ✅ DAG quotidien opérationnel |
-| Streamlit de démonstration | ⏳ En cours |
-| Drift monitoring (Evidently) | ⏳ Planifié |
+| Streamlit de démonstration | ✅ 3 pages — Accueil, Validation, Prédiction |
+| Drift monitoring (Evidently) | ⏳ Phase 4 — planifié |
 
 ---
 
-## 12. Prochaines étapes
+## 13. Prochaines étapes
 
-**Streamlit (en cours)** : interface de démonstration avec deux volets —
-- *Volet validation* : test interactif de chaque service de la stack (healthchecks, prédiction, MLflow, Nginx)
-- *Volet MVP* : sélection de station, prédiction d'occupation, visualisation des alertes
-
-**Evidently** : rapport de drift automatique intégré au DAG Airflow et au Streamlit — data drift sur les features et model drift sur les résidus prédits vs observés.
+**Evidently (Phase 4)** : rapport de drift automatique intégré au DAG Airflow — data drift sur les 24 features et model drift sur les résidus prédits vs observés. Visualisation dans le Streamlit.
 
 ---
 

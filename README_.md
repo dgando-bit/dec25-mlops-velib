@@ -154,7 +154,7 @@ dec25-mlops-velib/
 └── deployments/
     ├── nginx/
     │   ├── Dockerfile
-    │   └── nginx.conf              ← point d'entrée unique : :8080→api, :5000→mlflow, :8888→jupyter, :9090→prometheus, :3000→grafana
+    │   └── nginx.conf              ← point d'entrée unique : :8080→api, :5000→mlflow, :8888→jupyter, :9090→prometheus, :3000→grafana, :8090→airflow, :8501→streamlit
     └── prometheus/
         └── prometheus.yml          ← config Prometheus (scrape API /metrics toutes les 15s)
 ```
@@ -165,6 +165,8 @@ dec25-mlops-velib/
 > - JupyterLab  → `http://localhost:8888`
 > - Prometheus  → `http://localhost:9090`
 > - Grafana     → `http://localhost:3000`
+> - Airflow UI  → `http://localhost:${AIRFLOW_PORT}` (défaut : `8090`)
+> - Streamlit   → `http://localhost:${STREAMLIT_PORT}` (défaut : `8501`)
 
 ---
 
@@ -425,9 +427,9 @@ Le `dataviz_report.html` produit par `dataviz.py` regroupe 7 graphiques interact
 
 > **Note** : le graphe 1 utilise volontairement le parquet **brut** (avant nettoyage) parce que les filtres du nettoyage masqueraient les trous de collecte qu'on cherche justement à détecter.
 
-### Réutilisation depuis Streamlit (à venir)
+### Réutilisation depuis Streamlit
 
-Les 7 fonctions `render_*()` sont conçues pour être appelées indépendamment, ce qui permettra de les intégrer dans le futur dashboard Streamlit :
+Les 7 fonctions `render_*()` sont conçues pour être appelées indépendamment et peuvent être intégrées dans le dashboard Streamlit (`streamlit/`) :
 
 ```python
 import streamlit as st
