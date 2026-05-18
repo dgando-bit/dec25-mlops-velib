@@ -80,7 +80,7 @@ with DAG(
         bash_command=(
             f"RESPONSE=$(curl -sf -X POST {API_INTERNAL}/model/reload) "
             "&& echo \"$RESPONSE\" "
-            "&& echo \"$RESPONSE\" | grep -q 'ok\\|staging'"
+            "&& echo \"$RESPONSE\" | jq -e '.alias == \"staging\"' > /dev/null"
         ),
     )
 

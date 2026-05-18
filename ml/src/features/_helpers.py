@@ -518,8 +518,12 @@ def add_station_trend_avg(
 
     # ── Diagnostic : combien de lignes test sont sur chaque niveau ────────
     # Utile pour valider la cascade en soutenance
-    test_l1 = test_out.merge(trend_l1, on=groupby_l1, how="left")
-    n_test_on_l1 = int(test_l1["station_trend_avg_y"].notna().sum())
+    test_l1 = test_out.merge(
+        trend_l1.rename(columns={"station_trend_avg": "_trend_l1_diag"}),
+        on=groupby_l1,
+        how="left",
+    )
+    n_test_on_l1 = int(test_l1["_trend_l1_diag"].notna().sum())
     n_test_total = len(test_out)
 
     correlation_train = float(

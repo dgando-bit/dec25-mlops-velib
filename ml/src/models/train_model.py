@@ -68,7 +68,7 @@ logger = get_logger(__name__)
 # ─────────────────────────────────────────────────────────────────────────────
 # CONSTANTES MLflow
 # ─────────────────────────────────────────────────────────────────────────────
-EXPERIMENT_NAME = "velib_fill_rate"
+EXPERIMENT_NAME = settings.mlflow_experiment_name
 MODEL_NAME = "velib_fill_rate_predictor"
 STAGING_ALIAS = "staging"
 
