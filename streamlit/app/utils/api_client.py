@@ -111,3 +111,59 @@ def nginx_rate_limit(n: int = 25) -> tuple[int, int]:
         except Exception:
             pass
     return count_429, n
+
+
+# ── HuggingFace dataset ───────────────────────────────────────────────────────
+HF_DATASET_ID = "voroman/velib-ml-data"
+_HF_API = "https://huggingface.co/api"
+
+
+def hf_dataset_info() -> tuple[int, dict]:
+    """Retourne les métadonnées du dataset (createdAt, lastModified)."""
+    code, body = _get(f"{_HF_API}/datasets/{HF_DATASET_ID}", timeout=8)
+    if code == 200 and isinstance(body, dict):
+        return code, {
+            "created_at": body.get("createdAt", ""),
+            "last_modified": body.get("lastModified", ""),
+        }
+    return code, {}
+
+
+def hf_dataset_commits() -> tuple[bool, list]:
+    """
+    Pagine l'API commits HF pour récupérer tout l'historique de collecte.
+    Retourne (succès, liste de datetime.date) — une entrée par commit.
+    """
+    from datetime import datetime
+
+    all_dates = []
+    page = 1
+    limit = 1000
+    max_pages = 20
+
+    while page <= max_pages:
+        try:
+            r = requests.get(
+                f"{_HF_API}/datasets/{HF_DATASET_ID}/commits/main",
+                params={"limit": limit, "p": page},
+                timeout=15,
+            )
+            if r.status_code != 200:
+                break
+            commits = r.json()
+            if not commits:
+                break
+            for c in commits:
+                try:
+                    all_dates.append(
+                        datetime.strptime(c["date"][:10], "%Y-%m-%d").date()
+                    )
+                except (KeyError, ValueError):
+                    pass
+            if len(commits) < limit:
+                break
+            page += 1
+        except Exception:
+            break
+
+    return bool(all_dates), sorted(all_dates)

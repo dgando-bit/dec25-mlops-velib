@@ -4,6 +4,9 @@ import os
 sys.path.insert(0, os.path.dirname(__file__))
 
 import streamlit as st
+import plotly.graph_objects as go
+from collections import Counter
+from datetime import date, timedelta
 from utils import api_client
 
 st.set_page_config(
@@ -94,6 +97,105 @@ for col, (name, (icon, label, color)) in zip(cols, statuses.items()):
 st.caption("Rafraîchissement automatique toutes les 15 s — appuyez sur ↺ pour forcer.")
 st.divider()
 
+# ── Dataset HuggingFace ───────────────────────────────────────────────────────
+st.markdown("### Données — Continuité des relevés HuggingFace")
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def fetch_hf_data() -> tuple[int, dict, bool, list]:
+    info_code, info = api_client.hf_dataset_info()
+    if info_code != 200:
+        return info_code, {}, False, []
+    ok, dates = api_client.hf_dataset_commits()
+    return info_code, info, ok, dates
+
+
+with st.spinner("Récupération de l'historique HuggingFace… (première visite : ~15 s, puis mis en cache 5 min)"):
+    hf_code, hf_info, hf_ok, hf_dates = fetch_hf_data()
+
+col_badge, col_chart = st.columns([1, 3], gap="large")
+
+with col_badge:
+    if hf_code == 200:
+        st.markdown(
+            '<div style="background:#d4edda;border-radius:10px;padding:1.2rem;text-align:center;">'
+            '<div style="font-size:2rem">🟢</div>'
+            '<div style="font-weight:700;color:#2e7d32;font-size:0.9rem">HuggingFace</div>'
+            '<div style="font-size:0.78rem;color:#555;margin-top:0.3rem">Dataset accessible</div>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+    else:
+        st.markdown(
+            '<div style="background:#f8d7da;border-radius:10px;padding:1.2rem;text-align:center;">'
+            '<div style="font-size:2rem">🔴</div>'
+            '<div style="font-weight:700;color:#c53030;font-size:0.9rem">HuggingFace</div>'
+            f'<div style="font-size:0.78rem;color:#555;margin-top:0.3rem">HTTP {hf_code}</div>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+
+    if hf_info:
+        created = hf_info.get("created_at", "")[:10]
+        modified = hf_info.get("last_modified", "")[:10]
+        if created:
+            st.metric("Collecte depuis", created)
+        if modified:
+            st.metric("Dernier relevé", modified)
+
+    if hf_dates:
+        first_day = hf_dates[0]
+        last_day = hf_dates[-1]
+        total_days = (last_day - first_day).days + 1
+        st.metric("Total relevés", f"{len(hf_dates):,}")
+        st.metric("Jours couverts", f"{total_days} j")
+
+with col_chart:
+    if hf_ok and hf_dates:
+        counts = Counter(hf_dates)
+        first_day = hf_dates[0]
+        last_day = hf_dates[-1]
+        all_days = [first_day + timedelta(days=i) for i in range((last_day - first_day).days + 1)]
+        y_vals = [counts.get(d, 0) for d in all_days]
+
+        EXPECTED = 288
+        colors = [
+            "#5bac3a" if v >= 200
+            else "#f6a623" if v >= 50
+            else "#e53e3e"
+            for v in y_vals
+        ]
+
+        fig = go.Figure()
+        fig.add_bar(x=all_days, y=y_vals, marker_color=colors, name="Relevés / jour")
+        fig.add_hline(
+            y=EXPECTED, line_dash="dot", line_color="#718096", line_width=1,
+            annotation_text="288 / jour (cible)", annotation_position="top right",
+            annotation_font_size=11,
+        )
+        fig.update_layout(
+            title="Continuité de la collecte — relevés par jour",
+            xaxis_title=None,
+            yaxis_title="Relevés",
+            height=270,
+            margin=dict(t=45, b=20, l=40, r=20),
+            paper_bgcolor="#f7f8fa",
+            plot_bgcolor="#fff",
+            showlegend=False,
+            font={"family": "sans-serif", "size": 12},
+        )
+        fig.update_xaxes(showgrid=False)
+        fig.update_yaxes(gridcolor="#edf2f7", range=[0, EXPECTED + 40])
+        st.plotly_chart(fig, use_container_width=True)
+        st.caption(
+            "Un relevé est collecté toutes les 5 min via cron-job.org → HuggingFace Space → HuggingFace Datasets. "
+            "🟢 ≥ 200 · 🟡 50–200 · 🔴 < 50 — le dernier jour en cours est partiel."
+        )
+    elif not hf_ok:
+        st.info("Impossible de récupérer l'historique HuggingFace.")
+
+st.divider()
+
 # ── Architecture ─────────────────────────────────────────────────────────────
 st.markdown("### Architecture")
 
@@ -126,7 +228,7 @@ with right:
         ("Langage", "Python 3.12"),
         ("API", "FastAPI + Uvicorn"),
         ("ML", "XGBoost 3.0.2"),
-        ("Tracking", "MLflow 2.20.3"),
+        ("Tracking", "MLflow 2.22.0"),
         ("Données", "DVC + HuggingFace"),
         ("Orchestration", "Airflow 2.11.2"),
         ("Monitoring", "Prometheus + Grafana"),
@@ -162,14 +264,12 @@ ui_services = [
     ("MLflow UI", "http://localhost:5000", "Expériences, Registry, artefacts", True),
     ("Grafana", "http://localhost:3000", "Dashboard monitoring temps réel", True),
     ("Airflow UI", "http://localhost:8090", "DAG velib_pipeline, runs, logs", True),
-    ("JupyterLab", "http://localhost:8888", "Notebooks d'exploration", True),
     ("Prometheus", "http://localhost:9090", "Métriques brutes, alertes", False),
-    ("Swagger API", "http://localhost:8080/docs", "Documentation OpenAPI interactive", True),
 ]
 
-cols = st.columns(3)
+cols = st.columns(4)
 for i, (name, url, desc, primary) in enumerate(ui_services):
-    with cols[i % 3]:
+    with cols[i % 4]:
         btn_class = "link-btn" if primary else "link-btn link-btn-secondary"
         st.markdown(
             f'<div class="service-card">'
@@ -181,4 +281,4 @@ for i, (name, url, desc, primary) in enumerate(ui_services):
         )
 
 st.divider()
-st.caption("🚲 Vélib' MLOps · DataScientest promotion décembre 2025 · kumnito")
+st.caption("🚲 Vélib' MLOps · DataScientest promotion décembre 2025")
