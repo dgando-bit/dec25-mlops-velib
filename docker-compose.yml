@@ -135,6 +135,103 @@ services:
     networks:
       - mlops-net
 
+  airflow-db:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: airflow
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: ${AIRFLOW_DB_PASSWORD:-airflow_secret}
+    volumes:
+      - airflow_db_data:/var/lib/postgresql/data
+    networks:
+      - mlops-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U airflow -d airflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  airflow-init:
+    build:
+      context: deployments/airflow/
+      dockerfile: Dockerfile
+    depends_on:
+      airflow-db:
+        condition: service_healthy
+    environment:
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:${AIRFLOW_DB_PASSWORD:-airflow_secret}@airflow-db/airflow
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET_KEY:-changeme_in_production}
+      _AIRFLOW_DB_MIGRATE: "true"
+      _AIRFLOW_WWW_USER_CREATE: "true"
+      _AIRFLOW_WWW_USER_USERNAME: ${AIRFLOW_ADMIN_USER:-admin}
+      _AIRFLOW_WWW_USER_PASSWORD: ${AIRFLOW_ADMIN_PASSWORD:-admin}
+      _AIRFLOW_WWW_USER_FIRSTNAME: Admin
+      _AIRFLOW_WWW_USER_LASTNAME: Velib
+      _AIRFLOW_WWW_USER_ROLE: Admin
+      _AIRFLOW_WWW_USER_EMAIL: admin@velib.local
+    command: version
+    networks:
+      - mlops-net
+
+  airflow-webserver:
+    build:
+      context: deployments/airflow/
+      dockerfile: Dockerfile
+    depends_on:
+      airflow-db:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+    environment:
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:${AIRFLOW_DB_PASSWORD:-airflow_secret}@airflow-db/airflow
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/dags
+      AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET_KEY:-changeme_in_production}
+      AIRFLOW__WEBSERVER__BASE_URL: http://localhost:${AIRFLOW_PORT:-8090}
+      AIRFLOW__WEBSERVER__ENABLE_PROXY_FIX: "true"
+    volumes:
+      - ./deployments/airflow/dags:/opt/airflow/dags:ro
+      - airflow_logs:/opt/airflow/logs
+    command: airflow webserver
+    networks:
+      - mlops-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  airflow-scheduler:
+    build:
+      context: deployments/airflow/
+      dockerfile: Dockerfile
+    depends_on:
+      airflow-db:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+    environment:
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:${AIRFLOW_DB_PASSWORD:-airflow_secret}@airflow-db/airflow
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/dags
+      AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET_KEY:-changeme_in_production}
+      HOST_PROJECT_ROOT: ${HOST_PROJECT_ROOT}
+      MLFLOW_TRACKING_URI: http://mlflow-server:5000
+    volumes:
+      - ./deployments/airflow/dags:/opt/airflow/dags:ro
+      - airflow_logs:/opt/airflow/logs
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${HOST_PROJECT_ROOT}:${HOST_PROJECT_ROOT}
+    group_add:
+      - "${DOCKER_GID:-999}"
+    command: airflow scheduler
+    networks:
+      - mlops-net
+    restart: unless-stopped
+
   nginx:
     build:
       context: deployments/nginx/
@@ -145,6 +242,7 @@ services:
       - "8888:8888"
       - "9090:9090"
       - "3000:3000"
+      - "${AIRFLOW_PORT:-8090}:8090"
       - "443:443"
     volumes:
       - ./deployments/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
@@ -156,6 +254,7 @@ services:
       - jupyter-service
       - prometheus
       - grafana
+      - airflow-webserver
     networks:
       - mlops-net
 
@@ -163,3 +262,5 @@ volumes:
   mlflow_db_data:
   prometheus_data:
   grafana_data:
+  airflow_db_data:
+  airflow_logs:

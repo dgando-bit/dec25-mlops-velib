@@ -59,8 +59,8 @@ L'architecture est pensée comme un mini-système MLOps end-to-end avec une cont
 | Monitoring Prometheus                  | ✅ Opérationnel (scrape API /metrics toutes les 15s) | Prometheus/Grafana  |
 | Dashboard Grafana                      | ✅ Validé visuellement (datasource uid fixe, panels alimentés) | Prometheus/Grafana  |
 | Tests unitaires pytest                 | ✅ Phase 2 — 94 tests (API, ML, shared) avec modèle XGBoost fixture | pytest |
+| Orchestration Airflow                  | ✅ Phase 3 — DAG quotidien (HF check → DVC repro → reload modèle) | Airflow |
 | Streamlit (démo jury)                  | ⏳ Phase 3        | Streamlit           |
-| Orchestration Airflow                  | ⏳ Phase 3        | Airflow             |
 | Drift detection (Evidently)            | ⏳ Phase 4        | Evidently           |
 
 ### Volumétrie observée (05 mai 2026)
@@ -737,6 +737,76 @@ Tu n'es **pas** dans WSL. Vérifie l'invite : si elle commence par `PS C:\` ou `
 - `add-rectification-global` : branche active (pipeline complet)
 - `feat/<nom>` : nouvelles fonctionnalités
 - `fix/<nom>` : corrections
+
+---
+
+## Orchestration Airflow (Phase 3)
+
+Airflow orchestre l'exécution quotidienne du pipeline DVC et le rechargement du modèle API.
+
+### Architecture
+
+```
+airflow-db (Postgres 15)  ←─── airflow-init (migration + user)
+        │
+        ▼
+airflow-webserver :8080 ──► nginx :8090  ← UI accessible
+airflow-scheduler          (LocalExecutor — lance les tâches en sous-process)
+        │ Docker socket
+        ▼
+docker compose run --rm --no-deps ml_training dvc repro
+```
+
+### DAG `velib_pipeline` (cron : `0 4 * * *`)
+
+| Tâche | Rôle |
+|---|---|
+| `check_hf_connectivity` | Vérifie que HuggingFace est joignable |
+| `check_mlflow_health` | Vérifie que MLflow répond sur le réseau interne |
+| `dvc_repro` | Lance `dvc repro` dans le conteneur `ml_training` (5 stages DVC) |
+| `reload_model` | `POST /model/reload` → API charge le nouveau modèle |
+| `smoke_test` | `GET /health` → vérifie que le status est `ok` |
+
+### Prérequis avant de démarrer Airflow
+
+Deux variables **obligatoires** dans `.env` :
+
+```bash
+# Chemin absolu du projet sur l'hôte (pour DooD)
+HOST_PROJECT_ROOT=$(pwd)
+
+# GID du groupe docker (pour accès socket)
+DOCKER_GID=$(stat -c '%g' /var/run/docker.sock)
+```
+
+### Démarrage
+
+```bash
+# 1. Construire l'image Airflow
+make build
+
+# 2. Initialiser la base de données Airflow (une seule fois)
+make airflow-init
+
+# 3. Démarrer les services Airflow
+make airflow-up
+
+# 4. UI disponible sur http://localhost:8090
+#    (identifiants définis par AIRFLOW_ADMIN_USER / AIRFLOW_ADMIN_PASSWORD)
+```
+
+### Commandes courantes
+
+```bash
+make airflow-trigger     # Déclencher le DAG manuellement
+make airflow-logs        # Logs du scheduler
+make logs-airflow        # Logs du webserver
+make airflow-down        # Arrêter Airflow sans toucher au reste de la stack
+make shell-airflow       # Shell interactif dans le scheduler
+```
+
+> **Ports** : l'UI Airflow est exposée via Nginx sur `http://localhost:${AIRFLOW_PORT}` (défaut : `8090`).
+> Aucun service Airflow n'est accessible directement depuis l'extérieur.
 
 ---
 

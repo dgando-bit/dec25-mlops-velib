@@ -26,15 +26,16 @@ SERVICES := mlflow-db mlflow-server ml_training jupyter-service api
         build build-nocache \
         up down restart \
         up-infra up-ml up-api up-jupyter \
-        logs logs-api logs-ml logs-mlflow logs-jupyter \
+        logs logs-api logs-ml logs-mlflow logs-jupyter logs-airflow \
         ps status \
         health \
         test test-unit test-unit-api test-unit-ml test-api test-mlflow \
         train \
         clean clean-volumes clean-all \
-        shell-api shell-ml shell-jupyter \
+        shell-api shell-ml shell-jupyter shell-airflow \
         check-env setup \
-        dvc-pull dvc-push dvc-status dvc-add pipeline
+        dvc-pull dvc-push dvc-status dvc-add pipeline \
+        airflow-init airflow-up airflow-down airflow-logs airflow-trigger
 
 
 # =============================================================================
@@ -99,6 +100,15 @@ help:
 	@echo "  $(GREEN)make clean-volumes$(RESET)    Supprimer aussi les volumes (⚠️  perte de données)"
 	@echo "  $(GREEN)make clean-all$(RESET)        Nettoyage complet Docker système"
 	@echo ""
+	@echo "$(BOLD)🌀 Airflow$(RESET)"
+	@echo "  $(GREEN)make airflow-init$(RESET)     Initialiser la DB Airflow (one-shot)"
+	@echo "  $(GREEN)make airflow-up$(RESET)       Démarrer les 4 services Airflow"
+	@echo "  $(GREEN)make airflow-down$(RESET)     Arrêter les services Airflow"
+	@echo "  $(GREEN)make airflow-logs$(RESET)     Logs du scheduler Airflow"
+	@echo "  $(GREEN)make airflow-trigger$(RESET)  Déclencher le DAG manuellement"
+	@echo "  $(GREEN)make logs-airflow$(RESET)     Logs du webserver Airflow"
+	@echo "  $(GREEN)make shell-airflow$(RESET)    Shell dans le conteneur scheduler"
+	@echo ""
 	@echo "$(BOLD)⚙️  Setup$(RESET)"
 	@echo "  $(GREEN)make check-env$(RESET)        Vérifier que le fichier .env est présent"
 	@echo "  $(GREEN)make setup$(RESET)            Initialiser le projet (env + dossiers)"
@@ -118,7 +128,7 @@ check-env:
 	fi
 	@echo "$(GREEN)✓ .env présent$(RESET)"
 	@echo "$(CYAN)→ Vérification des variables requises...$(RESET)"
-	@for var in MLFLOW_DB MLFLOW_USER MLFLOW_PASSWORD JUPYTER_TOKEN; do \
+	@for var in MLFLOW_DB MLFLOW_USER MLFLOW_PASSWORD JUPYTER_TOKEN HOST_PROJECT_ROOT; do \
 		if ! grep -q "^$$var=" $(ENV_FILE); then \
 			echo "$(RED)✗ Variable manquante dans .env : $$var$(RESET)"; \
 			exit 1; \
@@ -394,3 +404,41 @@ clean-all:
 	$(COMPOSE) -f $(COMPOSE_FILE) down -v --rmi all
 	docker system prune -f
 	@echo "$(GREEN)✓ Système nettoyé$(RESET)"
+
+
+# =============================================================================
+# AIRFLOW
+# =============================================================================
+
+airflow-init: check-env
+	@echo "$(CYAN)→ Initialisation de la base Airflow (one-shot)...$(RESET)"
+	$(COMPOSE) -f $(COMPOSE_FILE) up -d airflow-db
+	@echo "$(CYAN)  Attente PostgreSQL Airflow...$(RESET)"
+	$(COMPOSE) -f $(COMPOSE_FILE) run --rm airflow-init
+	@echo "$(GREEN)✓ Airflow initialisé$(RESET)"
+
+airflow-up: check-env
+	@echo "$(CYAN)→ Démarrage des services Airflow...$(RESET)"
+	$(COMPOSE) -f $(COMPOSE_FILE) up -d airflow-db airflow-webserver airflow-scheduler
+	@echo "$(GREEN)✓ Airflow démarré$(RESET)"
+	@echo "$(CYAN)  UI disponible sur : http://localhost:$$(grep AIRFLOW_PORT $(ENV_FILE) | cut -d= -f2)$(RESET)"
+
+airflow-down:
+	@echo "$(YELLOW)→ Arrêt des services Airflow...$(RESET)"
+	$(COMPOSE) -f $(COMPOSE_FILE) stop airflow-scheduler airflow-webserver airflow-db
+	@echo "$(GREEN)✓ Airflow arrêté$(RESET)"
+
+airflow-logs:
+	$(COMPOSE) -f $(COMPOSE_FILE) logs -f airflow-scheduler
+
+logs-airflow:
+	$(COMPOSE) -f $(COMPOSE_FILE) logs -f airflow-webserver
+
+airflow-trigger: check-env
+	@echo "$(CYAN)→ Déclenchement manuel du DAG velib_pipeline...$(RESET)"
+	$(COMPOSE) -f $(COMPOSE_FILE) exec airflow-scheduler \
+		airflow dags trigger velib_pipeline
+	@echo "$(GREEN)✓ DAG déclenché — consulter l'UI : http://localhost:$$(grep AIRFLOW_PORT $(ENV_FILE) | cut -d= -f2)$(RESET)"
+
+shell-airflow:
+	$(COMPOSE) -f $(COMPOSE_FILE) exec airflow-scheduler /bin/bash
