@@ -375,7 +375,7 @@ pipeline:
 # =============================================================================
 
 shell-api:
-	docker exec -it velib_api /bin/bash
+	$(COMPOSE) -f $(COMPOSE_FILE) exec api /bin/bash
 
 shell-ml:
 	$(COMPOSE) -f $(COMPOSE_FILE) exec ml_training /bin/bash

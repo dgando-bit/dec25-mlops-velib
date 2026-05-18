@@ -47,7 +47,7 @@ logger = get_logger(__name__)
 # Constantes alignées avec train_model.py
 MODEL_NAME = "velib_fill_rate_predictor"
 DEFAULT_ALIAS = "staging"
-TRACKING_URI = f"sqlite:///{settings.repo_root / 'mlflow.db'}"
+TRACKING_URI = settings.mlflow_tracking_uri
 
 
 # ─────────────────────────────────────────────────────────────────────────────
