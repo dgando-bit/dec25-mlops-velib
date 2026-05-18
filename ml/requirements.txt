@@ -22,6 +22,7 @@ numpy==2.2.6                 # bumpé : 2.1.3 → 2.2.6 pour compatibilité mlfl
 scikit-learn==1.5.2          # supporte numpy 2 depuis 1.5.0
 xgboost==3.0.2
 optuna==3.6.1
+lightgbm
 
 # ── Tracking ──────────────────────────────────────────────────────────────────
 mlflow==2.20.3               # bumpé : 2.15.1 → 2.20.3 (résout conflit numpy 2)

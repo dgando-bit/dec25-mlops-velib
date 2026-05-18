@@ -3,8 +3,10 @@ networks:
     driver: bridge
 
 services:
+  # ─── Infrastructure ───────────────────────────────────────────────────────
   mlflow-db:
     image: postgres:15
+#    container_name: dec25-mlops-mlflow-db
     env_file: .env
     environment:
       POSTGRES_DB: ${MLFLOW_DB}
@@ -24,8 +26,8 @@ services:
     build:
       context: .
       dockerfile: mlflow/Dockerfile
-    env_file:
-      - .env
+#    container_name: dec25-mlops-mlflow-server
+    env_file: .env
     environment:
       MLFLOW_BACKEND_STORE_URI: postgresql://${MLFLOW_USER}:${MLFLOW_PASSWORD}@mlflow-db/${MLFLOW_DB}
       MLFLOW_DEFAULT_ARTIFACT_ROOT: /app/mlflow/artifacts
@@ -43,13 +45,17 @@ services:
       --backend-store-uri postgresql://${MLFLOW_USER}:${MLFLOW_PASSWORD}@mlflow-db/${MLFLOW_DB}
       --default-artifact-root /app/mlflow/artifacts
 
+  # ─── ML ───────────────────────────────────────────────────────────────────
   ml_training:
     build:
       context: .
       dockerfile: ml/Dockerfile
       target: training
+#    container_name: dec25-mlops-velib-ml
+    env_file: .env
     environment:
       MLFLOW_TRACKING_URI: http://mlflow-server:5000
+      ML_MODEL_STAGE: ${ML_MODEL_STAGE:-staging}
     volumes:
       - ./ml:/app/ml
       - ./data:/app/data
@@ -70,8 +76,8 @@ services:
       context: .
       dockerfile: ml/Dockerfile
       target: jupyter
-    env_file:
-      - .env
+#    container_name: dec25-mlops-jupyter
+    env_file: .env
     environment:
       JUPYTER_TOKEN: ${JUPYTER_TOKEN}
       MLFLOW_TRACKING_URI: http://mlflow-server:5000
@@ -81,6 +87,8 @@ services:
       - ./shared:/app/shared
       - ./ml/notebooks:/app/notebooks
       - ./data:/app/data
+    tmpfs:
+      - /home/appuser/.local/share/jupyter/runtime:uid=1000,gid=1000
     user: "1000:1000"
     networks:
       - mlops-net
@@ -94,21 +102,31 @@ services:
       --ServerApp.disable_check_xsrf=True
     restart: unless-stopped
 
+  # ─── API ──────────────────────────────────────────────────────────────────
   api:
     build:
       context: .
       dockerfile: api/Dockerfile
+#    container_name: dec25-mlops-velib-api
+    env_file:
+      - .env
     depends_on:
       - mlflow-server
     environment:
       MLFLOW_TRACKING_URI: http://mlflow-server:5000
+      API_MODEL_STAGE: ${API_MODEL_STAGE:-production}
     volumes:
       - ./mlflow/artifacts:/app/mlflow/artifacts
+      - ./shared:/app/shared
+      - ./api:/app/api
     networks:
       - mlops-net
+    command: uvicorn api.velib_api.main:app --host 0.0.0.0 --port 8000 --reload
 
+  # ─── Monitoring ───────────────────────────────────────────────────────────
   prometheus:
     image: prom/prometheus:latest
+#    container_name: dec25-mlops-prometheus
     volumes:
       - ./deployments/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
@@ -123,6 +141,7 @@ services:
 
   grafana:
     image: grafana/grafana:latest
+#    container_name: dec25-mlops-grafana
     environment:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
       GF_USERS_ALLOW_SIGN_UP: "false"
@@ -134,6 +153,22 @@ services:
       - prometheus
     networks:
       - mlops-net
+  
+  node-exporter:
+    image: prom/node-exporter:latest
+#    container_name: dec25-mlops-node-exporter
+    pid: host
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    networks:
+      - mlops-net
+    restart: unless-stopped
 
   airflow-db:
     image: postgres:15
@@ -232,16 +267,19 @@ services:
       - mlops-net
     restart: unless-stopped
 
+  # ─── Reverse Proxy ────────────────────────────────────────────────────────
   nginx:
     build:
       context: deployments/nginx/
       dockerfile: Dockerfile
+#    container_name: dec25-mlops-nginx
     ports:
-      - "8080:80"
+      - "80:80"
       - "${MLFLOW_PORT}:5000"
       - "8888:8888"
       - "9090:9090"
       - "3000:3000"
+      - "9100:9100"
       - "${AIRFLOW_PORT:-8090}:8090"
       - "443:443"
     volumes:
