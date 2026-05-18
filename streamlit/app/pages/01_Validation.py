@@ -89,12 +89,6 @@ with tab_api:
     if st.button("▶ Lancer les tests API", key="btn_api"):
         with st.spinner("Appels en cours…"):
 
-            code, body = api_client.api_health()
-            show_result(code, body, "GET /health",
-                        "Vérifie que l'API est opérationnelle et que le modèle XGBoost est chargé en mémoire. "
-                        "Retourne `ok` ou `degraded` si le modèle est absent.")
-
-            st.divider()
             code, body = api_client.api_model_info()
             show_result(code, body, "GET /model/info",
                         "Retourne les métadonnées du modèle actif : nom, alias MLflow (`staging`), "
@@ -152,12 +146,6 @@ with tab_mlflow:
     if st.button("▶ Lancer les tests MLflow", key="btn_mlflow"):
         with st.spinner("Connexion à MLflow…"):
 
-            code, body = api_client.mlflow_health()
-            show_result(code, body, "GET /api/2.0/mlflow/experiments/list",
-                        "Vérifie que le serveur MLflow est joignable et que la base PostgreSQL est accessible. "
-                        "Liste les expériences enregistrées (chaque `dvc repro` crée un nouveau run).")
-
-            st.divider()
             code, body = api_client.mlflow_models()
             if code == 200 and isinstance(body, dict):
                 models = body.get("registered_models", [])
@@ -185,11 +173,6 @@ with tab_prom:
     if st.button("▶ Lancer les tests Prometheus", key="btn_prom"):
         with st.spinner("Interrogation Prometheus…"):
 
-            code, body = api_client.prometheus_health()
-            st.markdown(f"**GET /-/healthy** — {status_badge(code)}")
-            st.caption("Endpoint de liveness de Prometheus. Retourne `Prometheus Server is Healthy.` si opérationnel.")
-
-            st.divider()
             code, body = api_client.prometheus_targets()
             if code == 200 and isinstance(body, dict):
                 targets = body.get("data", {}).get("activeTargets", [])
@@ -217,18 +200,29 @@ with tab_graf:
     )
     st.divider()
 
-    if st.button("▶ Lancer les tests Grafana", key="btn_graf"):
-        with st.spinner("Connexion à Grafana…"):
-
-            code, body = api_client.grafana_health()
-            show_result(code, body, "GET /api/health",
-                        "Vérifie que Grafana est opérationnel et que sa base de données interne (SQLite) "
-                        "est accessible. Retourne la version et l'état de la base.")
-            if code == 200 and isinstance(body, dict):
-                st.success(
-                    f"Grafana {body.get('version', '?')} — "
-                    f"base de données : {body.get('database', '?')}"
-                )
+    st.markdown("#### Dashboard provisionné automatiquement")
+    st.caption(
+        "Le dashboard est chargé au démarrage depuis `deployments/grafana/provisioning/` "
+        "(datasource Prometheus + 10 panels). Aucune configuration manuelle requise."
+    )
+    st.markdown("""
+| Panel | Métrique |
+|-------|---------|
+| Requêtes / min | `rate(http_requests_total[1m])` |
+| Taux d'erreur 5xx | `rate(http_requests_total{status=~"5.."}[1m])` |
+| Latence p95 | `histogram_quantile(0.95, ...)` |
+| Modèle chargé | `velib_model_loaded` |
+| Version modèle | `velib_model_version` |
+| R² modèle | `velib_model_r2` |
+| MAE modèle | `velib_model_mae` |
+| Latences par percentile | p50 / p90 / p99 |
+| Codes HTTP | répartition 2xx / 4xx / 5xx |
+| Rechargements modèle | `velib_model_reloads_total` |
+""")
+    st.markdown(
+        '<div class="link-btn"><a href="http://localhost:3000" target="_blank">Ouvrir Grafana ↗</a></div>',
+        unsafe_allow_html=True,
+    )
 
 # ─── Airflow ─────────────────────────────────────────────────────────────────
 with tab_airflow:
@@ -240,19 +234,28 @@ with tab_airflow:
     )
     st.divider()
 
-    if st.button("▶ Lancer les tests Airflow", key="btn_airflow"):
-        with st.spinner("Connexion à Airflow…"):
-
-            code, body = api_client.airflow_health()
-            show_result(code, body, "GET /health",
-                        "Vérifie l'état du scheduler (LocalExecutor) et de la metabase PostgreSQL. "
-                        "Les deux doivent être `healthy` pour que le DAG puisse s'exécuter.")
-            if code == 200 and isinstance(body, dict):
-                meta = body.get("metadatabase", {})
-                sched = body.get("scheduler", {})
-                c1, c2 = st.columns(2)
-                c1.metric("Metabase PostgreSQL", meta.get("status", "?"))
-                c2.metric("Scheduler", sched.get("status", "?"))
+    st.markdown("#### DAG `velib_pipeline` — orchestration quotidienne")
+    st.caption("Exécution automatique tous les jours à 04h00 UTC via LocalExecutor.")
+    st.code("""
+check_hf_connectivity
+    └─► check_mlflow_health
+            └─► dvc_repro          (timeout 3h — 5 stages DVC)
+                    └─► reload_model    (POST /model/reload + jq vérifie alias=staging)
+                            └─► smoke_test  (GET /health → status ok)
+""", language="text")
+    st.markdown("""
+| Tâche | Rôle | Retries |
+|-------|------|---------|
+| `check_hf_connectivity` | HuggingFace joignable | 3 |
+| `check_mlflow_health` | MLflow répond | 1 |
+| `dvc_repro` | Pipeline complet (5 stages) | 0 |
+| `reload_model` | Recharge le modèle staging dans l'API | 1 |
+| `smoke_test` | Vérifie que l'API répond `ok` | 1 |
+""")
+    st.markdown(
+        '<div class="link-btn"><a href="http://localhost:8090" target="_blank">Ouvrir Airflow ↗</a></div>',
+        unsafe_allow_html=True,
+    )
 
 # ─── Nginx ────────────────────────────────────────────────────────────────────
 with tab_nginx:

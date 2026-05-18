@@ -785,8 +785,8 @@ streamlit/
 
 | Page | Contenu |
 |------|---------|
-| **Accueil** | Status live de chaque service · Architecture · Métriques modèle · Liens natifs (MLflow, Grafana, Airflow, JupyterLab, Prometheus, Swagger) |
-| **Validation** | Tests fonctionnels par onglet (API, MLflow, Prometheus, Grafana, Airflow, Nginx) · pytest runner via `docker compose run` |
+| **Accueil** | Status live de chaque service · Graphique continuité HuggingFace (Plotly, cible 288/j) · Architecture · Métriques modèle · Liens natifs |
+| **Validation** | Tests fonctionnels par onglet (API, MLflow, Prometheus, Nginx, pytest runner) · Grafana et Airflow : descriptions statiques avec lien direct (pas de duplication des statuts de l'Accueil) |
 | **Prédiction** | Sélection station · Contexte temporel et météo · Prédiction POST /predict · Gauge Plotly · Alerte green/yellow/red |
 
 ### Commandes
