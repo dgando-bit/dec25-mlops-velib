@@ -29,7 +29,7 @@ SERVICES := mlflow-db mlflow-server ml_training jupyter-service api
         logs logs-api logs-ml logs-mlflow logs-jupyter \
         ps status \
         health \
-        test test-api test-mlflow \
+        test test-unit test-unit-api test-unit-ml test-api test-mlflow \
         train \
         clean clean-volumes clean-all \
         shell-api shell-ml shell-jupyter \
@@ -72,9 +72,12 @@ help:
 	@echo "$(BOLD)🏥 Santé & Tests$(RESET)"
 	@echo "  $(GREEN)make status$(RESET)           État de tous les conteneurs"
 	@echo "  $(GREEN)make health$(RESET)           Vérifier la santé de tous les services"
-	@echo "  $(GREEN)make test$(RESET)             Lancer tous les tests"
-	@echo "  $(GREEN)make test-api$(RESET)         Tester l'API (endpoints)"
-	@echo "  $(GREEN)make test-mlflow$(RESET)      Tester la connexion MLflow"
+	@echo "  $(GREEN)make test$(RESET)             Lancer tous les tests (unit + intégration)"
+	@echo "  $(GREEN)make test-unit$(RESET)        Tests unitaires pytest (API + ML + shared)"
+	@echo "  $(GREEN)make test-unit-api$(RESET)    Tests unitaires API uniquement"
+	@echo "  $(GREEN)make test-unit-ml$(RESET)     Tests unitaires ML + shared uniquement"
+	@echo "  $(GREEN)make test-api$(RESET)         Tests d'intégration API via curl (stack up)"
+	@echo "  $(GREEN)make test-mlflow$(RESET)      Tester la connexion MLflow (stack up)"
 	@echo ""
 	@echo "$(BOLD)🤖 ML$(RESET)"
 	@echo "  $(GREEN)make train$(RESET)            Lancer un job d'entraînement"
@@ -269,8 +272,28 @@ health:
 # TESTS
 # =============================================================================
 
-test: test-mlflow test-api
+test: test-unit test-mlflow test-api
 	@echo "$(GREEN)✓ Tous les tests passés$(RESET)"
+
+test-unit: test-unit-api test-unit-ml
+	@echo "$(GREEN)✓ Tests unitaires OK$(RESET)"
+
+test-unit-api:
+	@echo "$(CYAN)→ Tests unitaires API (schemas + endpoints)...$(RESET)"
+	$(COMPOSE) -f $(COMPOSE_FILE) run --rm --no-deps \
+		-v $(PWD)/api/tests:/app/api/tests \
+		api sh -c \
+		"pip install -q 'pytest>=8.0' 'pytest-cov>=5.0' 'httpx>=0.27' && python -m pytest api/tests/ -v --tb=short"
+	@echo "$(GREEN)✓ Tests API OK$(RESET)"
+
+test-unit-ml:
+	@echo "$(CYAN)→ Tests unitaires ML + shared (data cleaning, features, inférence, config)...$(RESET)"
+	$(COMPOSE) -f $(COMPOSE_FILE) run --rm --no-deps \
+		-v $(PWD)/ml/tests:/app/ml/tests \
+		-v $(PWD)/shared/tests:/app/shared/tests \
+		ml_training sh -c \
+		"pip install -q 'pytest>=8.0' 'pytest-cov>=5.0' && python -m pytest ml/tests/ shared/tests/ -v --tb=short"
+	@echo "$(GREEN)✓ Tests ML + shared OK$(RESET)"
 
 test-mlflow:
 	@echo "$(CYAN)→ Test de connexion MLflow...$(RESET)"

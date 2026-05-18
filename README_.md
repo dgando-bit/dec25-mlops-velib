@@ -58,6 +58,7 @@ L'architecture est pensée comme un mini-système MLOps end-to-end avec une cont
 | Reverse proxy Nginx                    | ✅ Point d'entrée unique (API + MLflow + Jupyter + Prometheus + Grafana) | Nginx |
 | Monitoring Prometheus                  | ✅ Opérationnel (scrape API /metrics toutes les 15s) | Prometheus/Grafana  |
 | Dashboard Grafana                      | ✅ Validé visuellement (datasource uid fixe, panels alimentés) | Prometheus/Grafana  |
+| Tests unitaires pytest                 | ✅ Phase 2 — 94 tests (API, ML, shared) avec modèle XGBoost fixture | pytest |
 | Streamlit (démo jury)                  | ⏳ Phase 3        | Streamlit           |
 | Orchestration Airflow                  | ⏳ Phase 3        | Airflow             |
 | Drift detection (Evidently)            | ⏳ Phase 4        | Evidently           |
@@ -458,6 +459,50 @@ Le rapport pèse ~110 Mo sur le dataset actuel (5M lignes). Trois pistes d'optim
 - **Format JSON sérialisé** : exporter chaque figure en JSON et les charger à la demande via JavaScript → gain ~60% à l'ouverture (mais complexifie le code).
 
 Aucune n'est appliquée par défaut pour rester fidèle au code original.
+
+---
+
+## Tests unitaires (Phase 2)
+
+Les tests utilisent **pytest** avec un modèle XGBoost fixture réel (entraîné sur données synthétiques) pour éviter tout appel MLflow pendant la CI.
+
+### Lancer les tests
+
+```bash
+# Tests unitaires uniquement (API + ML + shared) — ne nécessite pas la stack complète
+make test-unit
+
+# Tests API seuls
+make test-unit-api
+
+# Tests ML + shared seuls
+make test-unit-ml
+
+# Suite complète (unit + intégration curl — nécessite make up)
+make test
+```
+
+> **Prérequis** : les images Docker doivent être construites (`make build`) avant de lancer les tests.
+> Les cibles `test-unit-*` utilisent `docker compose run --rm --no-deps` — la stack n'a pas besoin d'être démarrée.
+
+### Couverture
+
+| Répertoire | Fichiers | Ce qui est testé |
+|---|---|---|
+| `api/tests/test_schemas.py` | 13 tests | Validation Pydantic — StationFeatures, BatchPredictionRequest |
+| `api/tests/test_endpoints.py` | 14 tests | Tous les endpoints FastAPI via TestClient |
+| `ml/tests/test_data_cleaning.py` | 18 tests | Fonctions pures `shared/utils/data_cleaning.py` |
+| `ml/tests/test_build_features.py` | 16 tests | Feature engineering — temporal, capacité, résidu, split |
+| `ml/tests/test_predict_model.py` | 10 tests | Inférence, clipping, seuils alert_level |
+| `shared/tests/test_config.py` | 12 tests | Validateurs Pydantic Settings |
+
+### Stratégie de mock (option B — modèle fixture)
+
+Les tests API injectent un vrai `Pipeline(SimpleImputer + XGBRegressor)` entraîné sur 300 lignes synthétiques.
+Trois patches évitent tout appel MLflow/PostgreSQL :
+- `velib_api.main.preload_model` → retourne des métadonnées statiques
+- `velib_api.dependencies.load_staging_model` → retourne le modèle fixture
+- `velib_api.main.load_model_by_alias` → MagicMock avec `cache_clear`
 
 ---
 
