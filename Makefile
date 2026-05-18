@@ -35,7 +35,8 @@ SERVICES := mlflow-db mlflow-server ml_training jupyter-service api
         shell-api shell-ml shell-jupyter shell-airflow \
         check-env setup \
         dvc-pull dvc-push dvc-status dvc-add pipeline \
-        airflow-init airflow-up airflow-down airflow-logs airflow-trigger
+        airflow-init airflow-up airflow-down airflow-logs airflow-trigger \
+        streamlit-up streamlit-down logs-streamlit shell-streamlit
 
 
 # =============================================================================
@@ -442,3 +443,21 @@ airflow-trigger: check-env
 
 shell-airflow:
 	$(COMPOSE) -f $(COMPOSE_FILE) exec airflow-scheduler /bin/bash
+
+# =============================================================================
+# STREAMLIT
+# =============================================================================
+streamlit-up: check-env
+	@echo "$(CYAN)▶ Démarrage Streamlit...$(RESET)"
+	$(COMPOSE) -f $(COMPOSE_FILE) up -d streamlit
+	@echo "$(GREEN)✓ Streamlit : http://localhost:$$(grep STREAMLIT_PORT $(ENV_FILE) | cut -d= -f2 | tr -d ' ' || echo 8501)$(RESET)"
+
+streamlit-down:
+	@echo "$(CYAN)▶ Arrêt Streamlit...$(RESET)"
+	$(COMPOSE) -f $(COMPOSE_FILE) stop streamlit
+
+logs-streamlit:
+	$(COMPOSE) -f $(COMPOSE_FILE) logs -f streamlit
+
+shell-streamlit:
+	$(COMPOSE) -f $(COMPOSE_FILE) exec streamlit /bin/bash

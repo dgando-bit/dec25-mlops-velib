@@ -60,7 +60,7 @@ L'architecture est pensée comme un mini-système MLOps end-to-end avec une cont
 | Dashboard Grafana                      | ✅ Validé visuellement (datasource uid fixe, panels alimentés) | Prometheus/Grafana  |
 | Tests unitaires pytest                 | ✅ Phase 2 — 94 tests (API, ML, shared) avec modèle XGBoost fixture | pytest |
 | Orchestration Airflow                  | ✅ Phase 3 — DAG quotidien (HF check → DVC repro → reload modèle) | Airflow |
-| Streamlit (démo jury)                  | ⏳ Phase 3        | Streamlit           |
+| Streamlit (démo jury)                  | ✅ Phase 3 — Accueil + Validation + Prédiction MVP | Streamlit |
 | Drift detection (Evidently)            | ⏳ Phase 4        | Evidently           |
 
 ### Volumétrie observée (05 mai 2026)
@@ -756,6 +756,49 @@ Trois pages HTML brandées Vélib' MLOps sont servies par Nginx en cas d'erreur 
 - `proxy_intercept_errors on` — nginx intercepte les erreurs upstream sur le bloc API (port 80)
 - Les fichiers sont montés en lecture seule : `./deployments/nginx/errors:/etc/nginx/errors:ro`
 - `location ^~ /errors/ { root /etc/nginx; internal; }` — bloc interne, non accessible directement depuis le client
+
+---
+
+## Streamlit — Application de démonstration (Phase 3)
+
+Interface de présentation du projet pour le jury DataScientest, accessible via Nginx sur `http://localhost:8501`.
+
+### Structure
+
+```
+streamlit/
+├── Dockerfile               # Python 3.12-slim + Docker CLI (pour pytest)
+├── requirements.txt         # streamlit, requests, pandas, plotly, pyarrow
+└── app/
+    ├── main.py              # Page Accueil : état des services + architecture + liens
+    ├── pages/
+    │   ├── 01_Validation.py # Tests fonctionnels par service + pytest runner
+    │   └── 02_Prediction.py # MVP métier : prédiction interactive
+    └── utils/
+        ├── api_client.py    # Appels HTTP vers API, MLflow, Prometheus, Grafana, Airflow
+        └── stations.py      # 15 stations de référence + build_features()
+```
+
+### Pages
+
+| Page | Contenu |
+|------|---------|
+| **Accueil** | Status live de chaque service · Architecture · Métriques modèle · Liens natifs (MLflow, Grafana, Airflow, JupyterLab, Prometheus, Swagger) |
+| **Validation** | Tests fonctionnels par onglet (API, MLflow, Prometheus, Grafana, Airflow, Nginx) · pytest runner via `docker compose run` |
+| **Prédiction** | Sélection station · Contexte temporel et météo · Prédiction POST /predict · Gauge Plotly · Alerte green/yellow/red |
+
+### Commandes
+
+```bash
+make streamlit-up      # Démarrer Streamlit (après make up)
+make streamlit-down    # Arrêter
+make logs-streamlit    # Logs en temps réel
+make shell-streamlit   # Shell dans le conteneur
+```
+
+### Prérequis
+
+- `HOST_PROJECT_ROOT` et `DOCKER_GID` dans `.env` (mêmes que pour Airflow) — nécessaires pour le pytest runner
 
 ---
 
