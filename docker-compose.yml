@@ -274,7 +274,7 @@ services:
       dockerfile: Dockerfile
 #    container_name: dec25-mlops-nginx
     ports:
-      - "80:80"
+      - "8080:80"
       - "${MLFLOW_PORT}:5000"
       - "8888:8888"
       - "9090:9090"
