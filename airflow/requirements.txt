@@ -5,3 +5,5 @@ pandas>=2.0,<3
 scikit-learn>=1.6,<2
 tenacity
 psycopg2-binary
+# Fixe protobuf pour éviter les conflits avec les dépendances Google d'Airflow
+protobuf>=3.20.2,<6.0.0
