@@ -62,3 +62,5 @@ mlflow.db
 /mlruns
 CLAUDE.md
 CLAUDE.md*
+
+airflow/logs
