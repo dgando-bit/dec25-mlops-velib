@@ -1,8 +1,121 @@
+x-airflow-common: &airflow-common
+  build: # ← remplace image:
+    context: .
+    dockerfile: airflow/Dockerfile
+  environment: &airflow-common-env
+    AIRFLOW__WEBSERVER__BASE_URL: http://localhost:8080
+    AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+#    AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:${AIRFLOW_DB_PASSWORD}@postgres/airflow
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:${AIRFLOW_DB_PASSWORD}@postgres/airflow
+    AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:${AIRFLOW_DB_PASSWORD}@postgres/airflow
+    AIRFLOW__CELERY__BROKER_URL: redis://:@redis:6379/0
+    AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY}       # ← depuis .env
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"                  # ← désactiver les exemples
+#    AIRFLOW__API__AUTH_BACKEND: "airflow.api.auth.backend.basic_auth"
+    AIRFLOW__API__AUTH_BACKENDS: "airflow.api.auth.backend.basic_auth"
+    AIRFLOW__SMTP__SMTP_HOST: "smtp.gmail.com"
+    AIRFLOW__SMTP__SMTP_PORT: 587
+    AIRFLOW__SMTP__SMTP_USER: ${AIRFLOW_SMTP_USER}         # ← depuis .env
+    AIRFLOW__SMTP__SMTP_PASSWORD: ${AIRFLOW_SMTP_PASSWORD} # ← depuis .env
+    AIRFLOW__SMTP__SMTP_MAIL_FROM: ${AIRFLOW_SMTP_USER}
+    MLFLOW_TRACKING_URI: http://mlflow-server:5000         # ← accès MLflow depuis DAGs
+  volumes:
+    - ./airflow/dags:/opt/airflow/dags
+    - ./airflow/logs:/opt/airflow/logs
+    - ./airflow/plugins:/opt/airflow/plugins
+    - ./data:/app/data
+    - ./ml:/app/ml
+    - ./shared:/app/shared
+    - ./mlflow/artifacts:/app/mlflow/artifacts
+  user: "${AIRFLOW_UID:-50000}:${AIRFLOW_GID:-0}"
+  networks:
+    - mlops-net
+  depends_on:
+    redis:
+      condition: service_healthy
+    postgres:
+      condition: service_healthy
+
 networks:
   mlops-net:
     driver: bridge
 
 services:
+  postgres:
+    image: postgres:15
+    container_name: dec25-mlops-airflow-db
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: ${AIRFLOW_DB_PASSWORD}
+      POSTGRES_DB: airflow
+    volumes:
+      - postgres_db_data:/var/lib/postgresql/data
+    networks:
+      - mlops-net
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 5s
+      retries: 5
+    restart: always
+
+  redis:
+    image: redis:latest
+    container_name: dec25-mlops-redis
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 30s
+      retries: 50
+    networks:
+      - mlops-net
+    restart: always
+
+  airflow-webserver:
+    <<: *airflow-common
+    container_name: dec25-mlops-airflow-webserver
+    command: webserver
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+    restart: always
+
+  airflow-scheduler:
+    <<: *airflow-common
+    container_name: dec25-mlops-airflow-scheduler
+    command: scheduler
+    restart: always
+
+  airflow-worker:
+    <<: *airflow-common
+    container_name: dec25-mlops-airflow-worker
+    command: celery worker
+    restart: always
+
+  airflow-init:
+    <<: *airflow-common
+    container_name: dec25-mlops-airflow-init
+    command: version
+    environment:
+      <<: *airflow-common-env
+      _AIRFLOW_DB_UPGRADE: "true"
+      _AIRFLOW_WWW_USER_CREATE: "true"
+      _AIRFLOW_WWW_USER_USERNAME: ${AIRFLOW_USER:-airflow}
+      _AIRFLOW_WWW_USER_PASSWORD: ${AIRFLOW_PASSWORD}
+
+  flower:
+    <<: *airflow-common
+    container_name: dec25-mlops-flower
+    command: celery flower
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:5555/"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+    restart: always
+
   # ─── Infrastructure ───────────────────────────────────────────────────────
   mlflow-db:
     image: postgres:15
@@ -178,12 +291,14 @@ services:
 #    container_name: dec25-mlops-nginx
     ports:
       - "80:80"
-      - "${MLFLOW_PORT}:5000"
-      - "8888:8888"
-      - "9090:9090"
-      - "3000:3000"
-      - "9100:9100"
       - "443:443"
+      - "${MLFLOW_PORT}:5000"    # MLflow
+      - "8080:8080"              # ← Airflow webserver
+      - "5555:5555"              # ← Flower (monitoring Celery)
+      - "8888:8888"              # Jupyter
+      - "9090:9090"              # Prometheus
+      - "3000:3000"              # Grafana
+      - "9100:9100"              # Node exporter
     volumes:
       - ./deployments/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./deployments/nginx/certs:/etc/nginx/certs:ro
@@ -194,6 +309,8 @@ services:
       - jupyter-service
       - prometheus
       - grafana
+      - airflow-webserver    # ← ajouté
+      - flower               # ← ajouté
     networks:
       - mlops-net
 
@@ -201,3 +318,4 @@ volumes:
   mlflow_db_data:
   prometheus_data:
   grafana_data:
+  postgres_db_data:

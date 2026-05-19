@@ -1,0 +1,7 @@
+# Dépendances ML nécessaires dans les DAGs
+mlflow>=2.10,<3
+huggingface_hub
+pandas>=2.0,<3
+scikit-learn>=1.6,<2
+tenacity
+psycopg2-binary

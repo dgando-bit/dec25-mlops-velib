@@ -34,7 +34,8 @@ SERVICES := mlflow-db mlflow-server ml_training jupyter-service api
         clean clean-volumes clean-all \
         shell-api shell-ml shell-jupyter \
         check-env setup \
-        dvc-pull dvc-push dvc-status dvc-add pipeline
+        dvc-pull dvc-push dvc-status dvc-add pipeline \
+        logs-airflow shell-airflow airflow-init
 
 
 # =============================================================================
@@ -91,6 +92,11 @@ help:
 	@echo "  $(GREEN)make shell-ml$(RESET)         Shell interactif dans le conteneur ML"
 	@echo "  $(GREEN)make shell-jupyter$(RESET)    Shell interactif dans le conteneur Jupyter"
 	@echo ""
+	@echo "$(BOLD)🌀 Airflow$(RESET)"
+	@echo "  $(GREEN)make logs-airflow$(RESET)     Logs du scheduler Airflow"
+	@echo "  $(GREEN)make shell-airflow$(RESET)    Shell interactif dans le scheduler"
+	@echo "  $(GREEN)make airflow-init$(RESET)     Initialiser la DB Airflow (premier démarrage)"
+	@echo ""
 	@echo "$(BOLD)🧹 Nettoyage$(RESET)"
 	@echo "  $(GREEN)make clean$(RESET)            Supprimer les conteneurs et images du projet"
 	@echo "  $(GREEN)make clean-volumes$(RESET)    Supprimer aussi les volumes (⚠️  perte de données)"
@@ -125,7 +131,8 @@ check-env:
 
 setup: check-env
 	@echo "$(CYAN)→ Création des dossiers nécessaires...$(RESET)"
-	@mkdir -p data/raw data/processed mlflow/artifacts ml/notebooks
+	@mkdir -p data/raw data/processed data/interim mlflow/artifacts ml/notebooks
+	@mkdir -p airflow/dags airflow/logs airflow/plugins
 	@echo "$(GREEN)✓ Dossiers créés$(RESET)"
 	@echo "$(CYAN)→ Vérification de Docker...$(RESET)"
 	@docker info > /dev/null 2>&1 || (echo "$(RED)✗ Docker n'est pas lancé$(RESET)" && exit 1)
@@ -232,31 +239,31 @@ health:
 	@echo ""
 
 	@echo "$(BOLD)[1/4] PostgreSQL (mlflow-db)$(RESET)"
-	@if $(COMPOSE) -f $(COMPOSE_FILE) exec mlflow-db pg_isready -U $$(grep MLFLOW_USER $(ENV_FILE) | cut -d= -f2) > /dev/null 2>&1; then \
+	@if docker exec dec25-mlops-mlflow-db pg_isready -U $$(grep MLFLOW_USER $(ENV_FILE) | cut -d= -f2) > /dev/null 2>&1; then \
 		echo "  $(GREEN)✓ PostgreSQL opérationnel$(RESET)"; \
 	else \
 		echo "  $(RED)✗ PostgreSQL ne répond pas$(RESET)"; \
 	fi
 
-	@echo "$(BOLD)[2/4] MLflow Server (via Nginx :5000)$(RESET)"
-	@if curl -sf http://localhost:5000/health > /dev/null 2>&1; then \
+	@echo "$(BOLD)[2/4] MLflow Server$(RESET)"
+	@if curl -sf http://localhost:5001/health > /dev/null 2>&1; then \
 		echo "  $(GREEN)✓ MLflow opérationnel$(RESET)"; \
-	elif curl -sf http://localhost:5000 > /dev/null 2>&1; then \
+	elif curl -sf http://localhost:5001 > /dev/null 2>&1; then \
 		echo "  $(GREEN)✓ MLflow répond (pas d'endpoint /health)$(RESET)"; \
 	else \
-		echo "  $(RED)✗ MLflow ne répond pas sur :5000$(RESET)"; \
+		echo "  $(RED)✗ MLflow ne répond pas sur :5001$(RESET)"; \
 	fi
 
-	@echo "$(BOLD)[3/4] API (via Nginx :8080)$(RESET)"
-	@if curl -sf http://localhost:8080/health > /dev/null 2>&1; then \
+	@echo "$(BOLD)[3/4] API$(RESET)"
+	@if curl -sf http://localhost:8000/health > /dev/null 2>&1; then \
 		echo "  $(GREEN)✓ API opérationnelle$(RESET)"; \
-		curl -s http://localhost:8080/health | python3 -m json.tool 2>/dev/null | sed 's/^/     /'; \
+		curl -s http://localhost:8000/health | python3 -m json.tool 2>/dev/null | sed 's/^/     /'; \
 	else \
-		echo "  $(RED)✗ API ne répond pas sur :8080$(RESET)"; \
+		echo "  $(RED)✗ API ne répond pas sur :8000$(RESET)"; \
 		echo "  $(YELLOW)  → Lance : make logs-api$(RESET)"; \
 	fi
 
-	@echo "$(BOLD)[4/4] Jupyter (via Nginx :8888)$(RESET)"
+	@echo "$(BOLD)[4/4] Jupyter$(RESET)"
 	@if curl -sf http://localhost:8888 > /dev/null 2>&1; then \
 		echo "  $(GREEN)✓ Jupyter opérationnel$(RESET)"; \
 	else \
@@ -274,22 +281,21 @@ test: test-mlflow test-api
 
 test-mlflow:
 	@echo "$(CYAN)→ Test de connexion MLflow...$(RESET)"
-	@curl -sf -X POST http://localhost:5000/api/2.0/mlflow/experiments/search \
-		-H "Content-Type: application/json" -d '{"max_results":1}' > /dev/null 2>&1 \
+	@curl -sf http://localhost:5001/api/2.0/mlflow/experiments/list > /dev/null 2>&1 \
 		&& echo "  $(GREEN)✓ MLflow API répond$(RESET)" \
 		|| echo "  $(RED)✗ MLflow API inaccessible$(RESET)"
 	@echo "$(CYAN)→ Test de connexion à la DB depuis mlflow-server...$(RESET)"
-	@$(COMPOSE) -f $(COMPOSE_FILE) exec mlflow-server python -c \
+	@docker exec dec25-mlops-mlflow-server python -c \
 		"import mlflow; mlflow.set_tracking_uri('http://localhost:5000'); print('  $(GREEN)✓ MLflow client OK$(RESET)')" \
 		2>/dev/null || echo "  $(RED)✗ Erreur client MLflow$(RESET)"
 
 test-api:
-	@echo "$(CYAN)→ Test des endpoints API (via Nginx :8080)...$(RESET)"
+	@echo "$(CYAN)→ Test des endpoints API...$(RESET)"
 	@echo "  GET /health"
-	@curl -sf -w "\n  Status: %{http_code}\n" http://localhost:8080/health 2>&1 | sed 's/^/  /' \
+	@curl -sf -w "\n  Status: %{http_code}\n" http://localhost:8000/health 2>&1 | sed 's/^/  /' \
 		|| echo "  $(RED)✗ /health inaccessible$(RESET)"
 	@echo "  GET /docs"
-	@curl -sf -o /dev/null -w "  Status: %{http_code}\n" http://localhost:8080/docs \
+	@curl -sf -o /dev/null -w "  Status: %{http_code}\n" http://localhost:8000/docs \
 		|| echo "  $(RED)✗ /docs inaccessible$(RESET)"
 
 
@@ -309,17 +315,17 @@ train:
 
 dvc-pull:
 	@echo "$(CYAN)→ Récupération des données depuis DagsHub...$(RESET)"
-	$(COMPOSE) -f $(COMPOSE_FILE) run --rm ml_training dvc pull
+	dvc pull
 	@echo "$(GREEN)✓ Données récupérées$(RESET)"
 
 dvc-push:
 	@echo "$(CYAN)→ Push des données vers DagsHub...$(RESET)"
-	$(COMPOSE) -f $(COMPOSE_FILE) run --rm ml_training dvc push
+	dvc push
 	@echo "$(GREEN)✓ Données envoyées$(RESET)"
 
 dvc-status:
 	@echo "$(CYAN)→ État des données DVC...$(RESET)"
-	$(COMPOSE) -f $(COMPOSE_FILE) run --rm ml_training dvc status
+	dvc status
 
 dvc-add:
 	@echo "$(CYAN)→ Tracking des changements dans data/...$(RESET)"
@@ -329,10 +335,7 @@ dvc-add:
 
 pipeline:
 	@echo "$(CYAN)→ Exécution du pipeline DVC...$(RESET)"
-	@mkdir -p mlflow/artifacts data/raw data/interim data/processed data/outputs/plots
 	$(COMPOSE) -f $(COMPOSE_FILE) run --rm ml_training dvc repro
-	@echo "$(CYAN)→ Rechargement du modèle dans l'API...$(RESET)"
-	@curl -s -X POST http://localhost:8080/model/reload | python3 -m json.tool 2>/dev/null | sed 's/^/  /' || echo "  $(YELLOW)⚠ API non joignable — lance make health pour vérifier$(RESET)"
 	@echo "$(GREEN)✓ Pipeline terminé$(RESET)"
 
 
@@ -344,10 +347,26 @@ shell-api:
 	docker exec -it velib_api /bin/bash
 
 shell-ml:
-	$(COMPOSE) -f $(COMPOSE_FILE) exec ml_training /bin/bash
+	docker exec -it velib_ml /bin/bash
 
 shell-jupyter:
-	$(COMPOSE) -f $(COMPOSE_FILE) exec jupyter-service /bin/bash
+	docker exec -it dec25-mlops-jupyter /bin/bash
+
+
+# =============================================================================
+# AIRFLOW
+# =============================================================================
+
+logs-airflow:
+	$(COMPOSE) -f $(COMPOSE_FILE) logs -f airflow-scheduler airflow-webserver
+
+shell-airflow:
+	docker exec -it dec25-mlops-airflow-scheduler /bin/bash
+
+airflow-init:
+	@echo "$(CYAN)→ Initialisation de la base Airflow...$(RESET)"
+	$(COMPOSE) -f $(COMPOSE_FILE) run --rm airflow-init
+	@echo "$(GREEN)✓ Airflow initialisé$(RESET)"
 
 
 # =============================================================================
