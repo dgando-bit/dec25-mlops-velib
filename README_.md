@@ -59,7 +59,7 @@ L'architecture est pensée comme un mini-système MLOps end-to-end avec une cont
 | Monitoring Prometheus                  | ✅ Opérationnel (scrape API /metrics toutes les 15s) | Prometheus/Grafana  |
 | Dashboard Grafana                      | ✅ Validé visuellement (datasource uid fixe, panels alimentés) | Prometheus/Grafana  |
 | Tests unitaires pytest                 | ✅ Phase 2 — 94 tests (API, ML, shared) avec modèle XGBoost fixture | pytest |
-| Orchestration Airflow                  | ✅ Phase 3 — DAG quotidien (HF check → DVC repro → reload modèle) | Airflow |
+| Orchestration Airflow                  | ✅ Phase 3 — DAG quotidien avec quality gate, branching conditionnel, XCom, TaskGroups | Airflow |
 | Streamlit (démo jury)                  | ✅ Phase 3 — Accueil + Validation + Prédiction MVP | Streamlit |
 | Drift detection (Evidently)            | ⏳ Phase 4        | Evidently           |
 
@@ -806,30 +806,126 @@ make shell-streamlit   # Shell dans le conteneur
 
 ## Orchestration Airflow (Phase 3)
 
-Airflow orchestre l'exécution quotidienne du pipeline DVC et le rechargement du modèle API.
+Airflow orchestre l'exécution quotidienne du pipeline DVC, valide la qualité du modèle produit, et recharge l'API uniquement si les seuils sont atteints.
 
-### Architecture
+### Architecture des services
 
 ```
-airflow-db (Postgres 15)  ←─── airflow-init (migration + user)
+airflow-db (Postgres 15)  ←─── airflow-init (migration + user admin)
         │
-        ▼
-airflow-webserver :8080 ──► nginx :8090  ← UI accessible
-airflow-scheduler          (LocalExecutor — lance les tâches en sous-process)
-        │ Docker socket
-        ▼
-docker compose run --rm --no-deps ml_training dvc repro
+        ├──► airflow-webserver :8080 ──► nginx :8090  ← UI accessible
+        │
+        └──► airflow-scheduler (LocalExecutor)
+                    │
+                    │  Docker-out-of-Docker
+                    │  /var/run/docker.sock (monté)
+                    │  HOST_PROJECT_ROOT    (monté)
+                    ▼
+        docker compose run --rm --no-deps ml_training <cmd>
 ```
 
-### DAG `velib_pipeline` (cron : `0 4 * * *`)
+### Architecture du DAG `velib_pipeline`
 
-| Tâche | Rôle |
-|---|---|
-| `check_hf_connectivity` | Vérifie que HuggingFace est joignable |
-| `check_mlflow_health` | Vérifie que MLflow répond sur le réseau interne |
-| `dvc_repro` | Lance `dvc repro` dans le conteneur `ml_training` (5 stages DVC) |
-| `reload_model` | `POST /model/reload` → API charge le nouveau modèle |
-| `smoke_test` | `GET /health` → vérifie que le status est `ok` |
+Cron : `0 4 * * *` — tous les jours à 04h00 UTC (heure creuse).
+Implémenté avec la **TaskFlow API** (Airflow 2.x) : `@task`, `@task_group`, `@task.short_circuit`, `@task.branch`, XCom typés.
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  preflight_checks  (@task_group — tâches parallèles)                        │
+│                                                                             │
+│  check_hf_connectivity ─┐                                                  │
+│  check_mlflow_health   ─┼─► (toutes OK ?)                                  │
+│  check_api_alive       ─┘                                                  │
+└──────────────────────────────────┬──────────────────────────────────────────┘
+                                   │
+                                   ▼
+                    ┌──────────────────────────────┐
+                    │  dvc_status_check             │
+                    │  (@task.short_circuit)        │
+                    │                              │
+                    │  dvc status → changements ?  │
+                    │  Non → court-circuit total   │
+                    │  Oui → continuer             │
+                    └──────────────┬───────────────┘
+                                   │ Oui
+                                   ▼
+                    ┌──────────────────────────────┐
+                    │  dvc_repro                   │
+                    │  (BashOperator)              │
+                    │                              │
+                    │  docker compose run          │
+                    │  ml_training dvc repro       │
+                    │  ← 5 stages DVC, ~5 min      │
+                    └──────────────┬───────────────┘
+                                   │
+                                   ▼
+                    ┌──────────────────────────────┐
+                    │  parse_metrics  (@task)       │
+                    │                              │
+                    │  lit data/outputs/           │
+                    │  metrics.json                │
+                    │  → XCom : {r2, mae, mape,    │
+                    │            run_id, timestamp} │
+                    └──────────────┬───────────────┘
+                                   │ XCom
+                                   ▼
+                    ┌──────────────────────────────┐
+                    │  gate_metrics  (@task)        │
+                    │                              │
+                    │  R²  ≥ 0.75                  │
+                    │  MAE ≤ 12.0 pp               │
+                    │  MAPE ≤ 50 %                 │
+                    │  → XCom : bool               │
+                    └──────────────┬───────────────┘
+                                   │ XCom
+                                   ▼
+                    ┌──────────────────────────────┐
+                    │  branch_on_gate (@task.branch)│
+                    └───────┬──────────────┬────────┘
+                            │ gate OK      │ gate KO
+                            ▼              ▼
+┌──────────────────────────────────────────────────────────────────┐
+│  deployment  (@task_group)                                        │
+│                                                                  │
+│  promote_model              skip_promotion                       │
+│  (BashOperator)             (EmptyOperator)                      │
+│  POST /model/reload         modèle précédent garde l'alias       │
+│  jq -e '.alias=="staging"'  staging — aucun rollback nécessaire  │
+│         │                          │                             │
+│         └──────────┬───────────────┘                             │
+│                    ▼                                             │
+│          smoke_test (BashOperator)                               │
+│          TriggerRule: NONE_FAILED_MIN_ONE_SUCCESS                │
+│          GET /health | jq '.status == "ok"'                      │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+### Tâches du DAG
+
+| Tâche | Type Airflow | Rôle |
+|---|---|---|
+| `preflight_checks.check_hf_connectivity` | `BashOperator` | curl HuggingFace, retries×3 |
+| `preflight_checks.check_mlflow_health` | `BashOperator` | curl MLflow `/health`, retries×3 |
+| `preflight_checks.check_api_alive` | `BashOperator` | jq `has("status")` sur `/health` |
+| `dvc_status_check` | `@task.short_circuit` | court-circuit si pipeline DVC à jour |
+| `dvc_repro` | `BashOperator` | `docker compose run ml_training dvc repro` |
+| `parse_metrics` | `@task` | lit `metrics.json` → XCom typé |
+| `gate_metrics` | `@task` | valide R², MAE, MAPE → XCom bool |
+| `branch_on_gate` | `@task.branch` | route vers promote ou skip |
+| `deployment.promote_model` | `BashOperator` | `POST /model/reload` + validation jq |
+| `deployment.skip_promotion` | `EmptyOperator` | branche de non-déploiement documentée |
+| `deployment.smoke_test` | `BashOperator` | vérification finale API — toujours exécutée |
+
+### Seuils du quality gate
+
+| Métrique | Seuil | Valeur baseline (run ea250421) |
+|---|---|---|
+| `taux_r2` | ≥ 0.75 | 0.833 |
+| `taux_mae` | ≤ 12.0 pp | 8.32 pp |
+| `taux_mape_pct` | ≤ 50 % | 36.7 % |
+
+En cas d'échec du gate, le DAG se termine sans erreur (branche `skip_promotion`),
+le modèle en mémoire API reste inchangé, et le log structuré JSON indique les métriques hors-seuil.
 
 ### Prérequis avant de démarrer Airflow
 
