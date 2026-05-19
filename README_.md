@@ -184,6 +184,8 @@ dec25-mlops-velib/
 
 > **Instances multiples sur la même machine** : la variable `COMPOSE_PROJECT_NAME` dans `.env` préfixe tous les conteneurs et volumes générés par Compose. Pour faire coexister deux instances (ex. dev et test de reproductibilité), changer cette valeur dans chaque `.env` (`velib-dev`, `velib-test`, etc.). Par défaut elle vaut `velib`.
 
+> **WSL2 — bind mount Prometheus** : sous Docker Desktop + WSL2, un bind mount de fichier individuel (`./deployments/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro`) échoue avec `"not a directory"`. Le `docker-compose.yml` monte le **répertoire** à la place (`./deployments/prometheus:/etc/prometheus:ro`), ce qui contourne la limitation sans modifier l'image.
+
 ---
 
 ## Installation pas à pas
@@ -909,6 +911,7 @@ Implémenté avec la **TaskFlow API** (Airflow 2.x) : `@task`, `@task_group`, `@
 | `preflight_checks.check_api_alive` | `BashOperator` | jq `has("status")` sur `/health` |
 | `dvc_status_check` | `@task.short_circuit` | court-circuit si pipeline DVC à jour |
 | `dvc_repro` | `BashOperator` | `docker compose run ml_training dvc repro` |
+| `parse_drift` | `@task` | lit `drift_metrics.json` → XCom (parallèle à `parse_metrics`) |
 | `parse_metrics` | `@task` | lit `metrics.json` → XCom typé |
 | `gate_metrics` | `@task` | valide R², MAE, MAPE → XCom bool |
 | `branch_on_gate` | `@task.branch` | route vers promote ou skip |
@@ -918,11 +921,11 @@ Implémenté avec la **TaskFlow API** (Airflow 2.x) : `@task`, `@task_group`, `@
 
 ### Seuils du quality gate
 
-| Métrique | Seuil | Valeur baseline (run ea250421) |
+| Métrique | Seuil | Valeur baseline (run 849635f4) |
 |---|---|---|
-| `taux_r2` | ≥ 0.75 | 0.833 |
-| `taux_mae` | ≤ 12.0 pp | 8.32 pp |
-| `taux_mape_pct` | ≤ 50 % | 36.7 % |
+| `taux_r2` | ≥ 0.75 | 0.863 |
+| `taux_mae` | ≤ 12.0 pp | 7.44 pp |
+| `taux_mape_pct` | ≤ 50 % | 32.7 % |
 
 En cas d'échec du gate, le DAG se termine sans erreur (branche `skip_promotion`),
 le modèle en mémoire API reste inchangé, et le log structuré JSON indique les métriques hors-seuil.
