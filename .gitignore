@@ -17,6 +17,10 @@ data/outputs/*
 !data/outputs/feature_importance.png
 !data/outputs/residuals_distribution.png
 !data/outputs/predictions_vs_actual.png
+# drift_metrics.json versionné (résumé JSON léger) ; drift_report.html ignoré (3.6 Mo)
+!data/outputs/drift/
+!data/outputs/drift/drift_metrics.json
+data/outputs/drift/drift_report.html
 
 # Logs d'exécution (regénérés à chaque run)
 data/raw/.snapshots.log

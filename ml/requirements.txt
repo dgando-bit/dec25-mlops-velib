@@ -29,6 +29,9 @@ mlflow==2.22.0               # aligné sur mlflow-server (2.22.0)
 # ── Versioning données (DVC + DagsHub remote S3-compatible) ──────────────────
 dvc[s3]>=3.50,<4
 
+# ── Monitoring / Drift detection ──────────────────────────────────────────────
+evidently==0.4.36            # dernière 0.4.x sans contrainte numpy<2.1 (0.4.37+ incompatible avec numpy==2.2.6)
+
 # ── Visualisation ─────────────────────────────────────────────────────────────
 matplotlib==3.9.2            # conservé pour rétro-compat / debug
 seaborn==0.13.2              # idem

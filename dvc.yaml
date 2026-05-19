@@ -1,12 +1,13 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # dvc.yaml — Pipeline ML reproductible du projet Vélib'
 # ─────────────────────────────────────────────────────────────────────────────
-# Cinq stages enchaînés :
+# Six stages — deux branches après build_features :
 #   1. load_from_hf     ✅ ACTIF — télécharge le dataset HF et produit un parquet brut
 #   2. make_dataset     ✅ ACTIF — nettoie, filtre, calcule la target (taux)
 #   3. dataviz          ✅ ACTIF — produit le rapport HTML d'exploration visuelle
 #   4. build_features   ✅ ACTIF — feature engineering + split train/test
 #   5. train_model      ✅ ACTIF — XGBoost + MLflow + promotion alias 'staging'
+#   6. detect_drift     ✅ ACTIF — détection de data drift Evidently (train vs test)
 #
 # Lancement :
 #   dvc repro                       # (re-)exécute uniquement les stages dont les inputs ont changé
@@ -73,6 +74,21 @@ stages:
       - data/processed/train_preprocessed.parquet
       - data/processed/test_preprocessed.parquet
       - data/processed/stations_geo.parquet
+
+  detect_drift:
+    desc: "Détection de data drift Evidently sur les 24 features (train=référence, test=courant)."
+    cmd: python -m ml.src.monitoring.detect_drift
+    deps:
+      - ml/src/monitoring/detect_drift.py
+      - ml/src/models/_helpers.py
+      - shared/shared/logger.py
+      - data/processed/train_preprocessed.parquet
+      - data/processed/test_preprocessed.parquet
+    outs:
+      - data/outputs/drift/drift_report.html:
+          cache: false
+      - data/outputs/drift/drift_metrics.json:
+          cache: false
 
   train_model:
     desc: "Entraîne XGBoost sur le résidu, logue MLflow (PostgreSQL), promeut en alias 'staging' du Registry."

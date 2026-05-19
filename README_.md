@@ -53,7 +53,7 @@ L'architecture est pensée comme un mini-système MLOps end-to-end avec une cont
 | `dataviz.py` (visualisation Plotly)    | ✅ Implémenté     | Seaborn / Plotly    |
 | `build_features.py` (FE + split)       | ✅ Implémenté     | Feature engineering |
 | `train_model.py` (XGBoost + MLflow)    | ✅ Implémenté     | MLflow              |
-| Pipeline DVC (5 stages)                | ✅ Opérationnel   | DVC + DagsHub       |
+| Pipeline DVC (6 stages)                | ✅ Opérationnel — detect_drift ajouté (parallèle à train_model) | DVC + DagsHub |
 | API d'inférence (FastAPI)              | ✅ Opérationnelle — 6 endpoints dont `POST /model/reload` | FastAPI |
 | Reverse proxy Nginx                    | ✅ Point d'entrée unique + pages d'erreur personnalisées (404/429/50x) | Nginx |
 | Monitoring Prometheus                  | ✅ Opérationnel (scrape API /metrics toutes les 15s) | Prometheus/Grafana  |
@@ -61,7 +61,7 @@ L'architecture est pensée comme un mini-système MLOps end-to-end avec une cont
 | Tests unitaires pytest                 | ✅ Phase 2 — 94 tests (API, ML, shared) avec modèle XGBoost fixture | pytest |
 | Orchestration Airflow                  | ✅ Phase 3 — DAG quotidien avec quality gate, branching conditionnel, XCom, TaskGroups | Airflow |
 | Streamlit (démo jury)                  | ✅ Phase 3 — Accueil + Validation + Prédiction MVP | Streamlit |
-| Drift detection (Evidently)            | ⏳ Phase 4        | Evidently           |
+| Drift detection (Evidently)            | ✅ Phase 4 — stage DVC `detect_drift` + tâche Airflow `parse_drift` | Evidently |
 
 ### Volumétrie observée (05 mai 2026)
 
@@ -967,6 +967,59 @@ make shell-airflow       # Shell interactif dans le scheduler
 
 > **Ports** : l'UI Airflow est exposée via Nginx sur `http://localhost:${AIRFLOW_PORT}` (défaut : `8090`).
 > Aucun service Airflow n'est accessible directement depuis l'extérieur.
+
+---
+
+## Drift detection Evidently (Phase 4)
+
+Détection de data drift quotidienne sur les 24 features du modèle, intégrée au pipeline DVC et au DAG Airflow.
+
+### Stage DVC `detect_drift`
+
+```
+build_features ──┬──► train_model   (stage 5)
+                 └──► detect_drift  (stage 6, parallèle)
+```
+
+| Paramètre | Valeur |
+|---|---|
+| Script | `ml/src/monitoring/detect_drift.py` |
+| Référence | `data/processed/train_preprocessed.parquet` |
+| Courant | `data/processed/test_preprocessed.parquet` |
+| Features | 24 (FEATURES_FINAL) |
+| Méthode | Evidently `DataDriftPreset` (test statistique par feature) |
+| Seuil alerte | > 30% des features driftées |
+| Sortie rapport | `data/outputs/drift/drift_report.html` (HTML interactif) |
+| Sortie métriques | `data/outputs/drift/drift_metrics.json` |
+
+`drift_metrics.json` contient : `timestamp`, `n_features`, `n_drifted`, `drift_share`, `dataset_drift`, `drift_alert`.
+
+### Intégration Airflow
+
+Le DAG `velib_pipeline` exécute `parse_drift` en **parallèle** avec `parse_metrics` après `dvc_repro`.
+Les deux résultats convergent dans `gate_metrics` :
+
+```
+dvc_repro ──┬──► parse_drift    (lit drift_metrics.json → XCom)
+            └──► parse_metrics  (lit metrics.json → XCom)
+                      └──► gate_metrics (log drift + seuils ML → branch)
+```
+
+Le drift est **informatif** à ce stade : il est loggé dans `gate_metrics` avec le `run_id` MLflow,
+mais ne bloque pas la promotion. Un `DRIFT ALERT` dans les logs signale une dérive à investiguer.
+
+### Lancer manuellement
+
+```bash
+# Via DVC dans le conteneur ml_training
+make pipeline
+
+# Ou uniquement le stage drift
+docker compose run --rm --no-deps ml_training dvc repro detect_drift
+
+# Ouvrir le rapport HTML
+explorer.exe data/outputs/drift/drift_report.html
+```
 
 ---
 

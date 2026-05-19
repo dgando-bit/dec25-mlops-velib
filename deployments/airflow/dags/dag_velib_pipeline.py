@@ -60,6 +60,7 @@ if not HOST_ROOT:
     )
 
 METRICS_PATH = Path(HOST_ROOT) / "data" / "outputs" / "metrics.json"
+DRIFT_METRICS_PATH = Path(HOST_ROOT) / "data" / "outputs" / "drift" / "drift_metrics.json"
 
 logger = logging.getLogger(__name__)
 
@@ -207,7 +208,43 @@ with DAG(
         doc_md="Runs the 5-stage DVC pipeline inside the `ml_training` container.",
     )
 
-    # ----- 4. Quality gate on metrics ------------------------------------
+    # ----- 4. Drift detection + quality gate (parallel reads) ----------------
+
+    @task(task_id="parse_drift")
+    def parse_drift() -> dict[str, Any]:
+        """Reads drift_metrics.json produced by detect_drift DVC stage.
+
+        Returns a dict with drift summary. If the file is absent (first run
+        before detect_drift has executed), returns neutral values so the gate
+        is not blocked.
+        """
+        if not DRIFT_METRICS_PATH.exists():
+            logger.warning(
+                "drift_metrics.json not found at %s — drift check skipped", DRIFT_METRICS_PATH
+            )
+            return {"drift_share": None, "n_drifted": None, "n_features": None,
+                    "dataset_drift": None, "drift_alert": False}
+        try:
+            data = json.loads(DRIFT_METRICS_PATH.read_text())
+        except (json.JSONDecodeError, KeyError, ValueError) as exc:
+            raise AirflowException(
+                f"drift_metrics.json is malformed: {exc}"
+            ) from exc
+
+        if data.get("drift_alert"):
+            logger.warning(
+                "DRIFT ALERT — %.0f%% des features ont drifté (%s/%s) — timestamp=%s",
+                (data["drift_share"] or 0) * 100,
+                data["n_drifted"], data["n_features"],
+                data.get("timestamp"),
+            )
+        else:
+            logger.info(
+                "Pas de drift significatif — %.0f%% des features (%s/%s)",
+                (data.get("drift_share") or 0) * 100,
+                data.get("n_drifted"), data.get("n_features"),
+            )
+        return data
 
     @task(task_id="parse_metrics")
     def parse_metrics() -> dict[str, Any]:
@@ -231,8 +268,12 @@ with DAG(
         return parsed
 
     @task(task_id="gate_metrics")
-    def gate_metrics(metrics: dict[str, Any]) -> bool:
-        """Validates new model metrics against quality thresholds."""
+    def gate_metrics(metrics: dict[str, Any], drift: dict[str, Any]) -> bool:
+        """Validates new model metrics against quality thresholds.
+
+        Drift info is logged alongside model metrics for full observability.
+        Drift does NOT block promotion at this stage (informational).
+        """
         r2, mae, mape = metrics["r2"], metrics["mae"], metrics["mape"]
         checks = {
             "r2_ok": r2 >= GATE_MIN_R2,
@@ -240,12 +281,21 @@ with DAG(
             "mape_ok": mape <= GATE_MAX_MAPE_PCT,
         }
         passed = all(checks.values())
+        drift_share = drift.get("drift_share")
+        drift_info = (
+            f"drift={drift_share * 100:.0f}% ({drift.get('n_drifted')}/{drift.get('n_features')} features)"
+            if drift_share is not None
+            else "drift=n/a"
+        )
         logger.info(
             "Gate %s — run_id=%s r2=%.3f (>= %.2f), mae=%.2f (<= %.2f), "
-            "mape=%.1f%% (<= %.1f%%) — checks=%s",
+            "mape=%.1f%% (<= %.1f%%) | %s%s — checks=%s",
             "PASSED" if passed else "FAILED",
             metrics["run_id"],
-            r2, GATE_MIN_R2, mae, GATE_MAX_MAE, mape, GATE_MAX_MAPE_PCT, checks,
+            r2, GATE_MIN_R2, mae, GATE_MAX_MAE, mape, GATE_MAX_MAPE_PCT,
+            drift_info,
+            " ⚠ DRIFT ALERT" if drift.get("drift_alert") else "",
+            checks,
         )
         return passed
 
@@ -293,12 +343,18 @@ with DAG(
         [promote, skip] >> smoke
 
     # ----- Wiring --------------------------------------------------------
+    # parse_drift and parse_metrics run in parallel after dvc_repro,
+    # then both feed into gate_metrics via XCom.
 
     pre = preflight_checks()
     dvc_check = dvc_status_check()
+    drift_xcom = parse_drift()
     metrics_xcom = parse_metrics()
-    gate_xcom = gate_metrics(metrics_xcom)
+    gate_xcom = gate_metrics(metrics_xcom, drift_xcom)
     branch = branch_on_gate(gate_xcom)
     deploy = deployment()
 
-    pre >> dvc_check >> dvc_repro >> metrics_xcom >> gate_xcom >> branch >> deploy
+    pre >> dvc_check >> dvc_repro >> [drift_xcom, metrics_xcom]
+    # gate_xcom dépend déjà implicitement de drift_xcom et metrics_xcom
+    # via les arguments TaskFlow — pas besoin de >> explicite ici.
+    gate_xcom >> branch >> deploy
