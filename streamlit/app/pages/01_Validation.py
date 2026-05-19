@@ -228,8 +228,8 @@ with tab_graf:
 with tab_airflow:
     st.markdown("### Airflow — tests fonctionnels")
     st.markdown(
-        "Airflow orchestre le pipeline quotidien à 04h00 UTC. "
-        "DAG `velib_pipeline` : `check_hf → check_mlflow → dvc_repro → reload_model → smoke_test`. "
+        "Airflow orchestre le pipeline quotidien à 04h00 UTC (cron `0 4 * * *`). "
+        "DAG `velib_pipeline` — TaskFlow API Airflow 2.x, LocalExecutor, `dagrun_timeout=7h`. "
         "UI sur `localhost:8090`."
     )
     st.divider()
@@ -237,20 +237,44 @@ with tab_airflow:
     st.markdown("#### DAG `velib_pipeline` — orchestration quotidienne")
     st.caption("Exécution automatique tous les jours à 04h00 UTC via LocalExecutor.")
     st.code("""
-check_hf_connectivity
-    └─► check_mlflow_health
-            └─► dvc_repro          (timeout 3h — 5 stages DVC)
-                    └─► reload_model    (POST /model/reload + jq vérifie alias=staging)
-                            └─► smoke_test  (GET /health → status ok)
+preflight_checks  (@task_group — parallèle)
+  ├─ check_hf_connectivity
+  ├─ check_mlflow_health
+  └─ check_api_alive
+        ▼
+dvc_status_check  (@task.short_circuit)
+  → court-circuit si dvc status = up-to-date
+        ▼
+dvc_repro  (BashOperator — exec_timeout 3h, 1 retry exponentiel)
+  → 5 stages DVC : load_from_hf → make_dataset → dataviz
+                   → build_features → train_model → detect_drift
+        ▼                              ▼
+parse_metrics (@task)          parse_drift (@task — parallèle)
+  → XCom : run_id, r2,           → XCom : n_drifted_features,
+    mae, mape, timestamp           share_drifted (informatif)
+        ▼─────────────────────────────┘
+gate_metrics (@task)
+  → seuils : R² ≥ 0.75 | MAE ≤ 12.0 | MAPE ≤ 50 %
+        ▼
+branch_on_gate (@task.branch)
+  ├─ deployment.promote_model   → POST /model/reload + jq alias=staging
+  └─ deployment.skip_promotion  → EmptyOperator (modèle précédent conservé)
+        ▼  (TriggerRule.NONE_FAILED_MIN_ONE_SUCCESS)
+deployment.smoke_test  → GET /health | jq '.status == "ok"'
 """, language="text")
     st.markdown("""
 | Tâche | Rôle | Retries |
 |-------|------|---------|
-| `check_hf_connectivity` | HuggingFace joignable | 3 |
-| `check_mlflow_health` | MLflow répond | 1 |
-| `dvc_repro` | Pipeline complet (5 stages) | 0 |
-| `reload_model` | Recharge le modèle staging dans l'API | 1 |
-| `smoke_test` | Vérifie que l'API répond `ok` | 1 |
+| `preflight_checks` | HF + MLflow + API joignables (parallèle) | 3 / 1 / 1 |
+| `dvc_status_check` | Court-circuit si pipeline à jour | 0 |
+| `dvc_repro` | Pipeline complet (6 stages dont detect_drift) | 1 exp. |
+| `parse_metrics` | Lecture metrics.json → XCom typé | 0 |
+| `parse_drift` | Lecture drift_metrics.json → XCom typé | 0 |
+| `gate_metrics` | Quality gate R²/MAE/MAPE (bloquant) | 0 |
+| `branch_on_gate` | Branche selon résultat du gate | 0 |
+| `promote_model` | `POST /model/reload` + validation jq | 1 |
+| `skip_promotion` | No-op — modèle précédent reste en staging | 0 |
+| `smoke_test` | `GET /health` → `status == "ok"` | 1 |
 """)
     st.markdown(
         '<div class="link-btn"><a href="http://localhost:8090" target="_blank">Ouvrir Airflow ↗</a></div>',

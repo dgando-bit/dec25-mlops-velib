@@ -73,6 +73,19 @@ def mlflow_models() -> tuple[int, Any]:
     return _get(f"{MLFLOW_BASE}/api/2.0/mlflow/registered-models/list?max_results=5")
 
 
+def mlflow_run_metrics(run_id: str) -> tuple[int, dict]:
+    """Retourne métriques, params et info d'un run MLflow."""
+    code, body = _get(f"{MLFLOW_BASE}/api/2.0/mlflow/runs/get?run_id={run_id}", timeout=8)
+    if code == 200 and isinstance(body, dict):
+        run = body.get("run", {})
+        data = run.get("data", {})
+        metrics = {m["key"]: m["value"] for m in data.get("metrics", [])}
+        params = {p["key"]: p["value"] for p in data.get("params", [])}
+        info = run.get("info", {})
+        return code, {"metrics": metrics, "params": params, "info": info}
+    return code, {}
+
+
 # ── Prometheus ───────────────────────────────────────────────────────────────
 def prometheus_health() -> tuple[int, Any]:
     return _get(f"{PROMETHEUS_BASE}/-/healthy")

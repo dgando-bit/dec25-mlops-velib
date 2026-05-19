@@ -199,10 +199,7 @@ st.divider()
 # ── Architecture ─────────────────────────────────────────────────────────────
 st.markdown("### Architecture")
 
-left, right = st.columns([1.2, 1])
-
-with left:
-    st.code("""
+st.code("""
   Internet
      │
   ┌──────── Nginx (point d'entrée unique) ────────┐
@@ -215,46 +212,68 @@ with left:
   │  :8501 → Streamlit (cette app)                │
   └───────────────────────────────────────────────┘
      │
-  Pipeline DVC (5 stages, orchestré par Airflow)
-  load_from_hf → make_dataset → build_features → train_model
+  Pipeline DVC (6 stages, orchestré par Airflow)
+  load_from_hf → make_dataset → build_features → train_model → detect_drift
                                                       │
                                               MLflow Registry
                                               alias: staging
 """, language="text")
 
-with right:
-    st.markdown("#### Stack")
-    stack = [
-        ("Langage", "Python 3.12"),
-        ("API", "FastAPI + Uvicorn"),
-        ("ML", "XGBoost 3.0.2"),
-        ("Tracking", "MLflow 2.22.0"),
-        ("Données", "DVC + HuggingFace"),
-        ("Orchestration", "Airflow 2.11.2"),
-        ("Monitoring", "Prometheus + Grafana"),
-        ("Proxy", "Nginx"),
-        ("Tests", "pytest (94 tests)"),
-        ("Conteneurs", "Docker Compose v2"),
-    ]
-    for tech, val in stack:
-        st.markdown(
-            f'<div style="display:flex;justify-content:space-between;'
-            f'padding:0.3rem 0.5rem;border-bottom:1px solid #edf2f7;font-size:0.875rem">'
-            f'<span style="color:#718096">{tech}</span>'
-            f'<span style="font-weight:600">{val}</span></div>',
-            unsafe_allow_html=True,
-        )
-
 st.divider()
 
 # ── Métriques modèle ─────────────────────────────────────────────────────────
 st.markdown("### Modèle ML — Dernières métriques")
+
+
+@st.cache_data(ttl=30, show_spinner=False)
+def fetch_model_metrics() -> dict:
+    code, info = api_client.api_model_info()
+    if code != 200 or not isinstance(info, dict):
+        return {}
+    run_id = info.get("run_id", "")
+    result = {
+        "version": info.get("version", "?"),
+        "run_id": run_id,
+        "n_features": info.get("n_features", 24),
+    }
+    if not run_id:
+        return result
+    mcode, mdata = api_client.mlflow_run_metrics(run_id)
+    if mcode == 200 and mdata:
+        result.update(mdata.get("metrics", {}))
+        start_ms = mdata.get("info", {}).get("start_time")
+        if start_ms:
+            result["run_date"] = date.fromtimestamp(int(start_ms) / 1000).isoformat()
+    return result
+
+
+with st.spinner("Récupération des métriques modèle…"):
+    model_metrics = fetch_model_metrics()
+
 m1, m2, m3, m4 = st.columns(4)
-m1.metric("R² (taux reconstruit)", "0.833")
-m2.metric("MAE", "8.32 pp")
-m3.metric("RMSE", "12.08 pp")
-m4.metric("Stations couvertes", "1 492")
-st.caption("Run `ea250421` · XGBoost sur résidu (taux − station_trend_avg) · 24 features · 15 mai 2026")
+if model_metrics:
+    r2 = model_metrics.get("taux_r2")
+    mae = model_metrics.get("taux_mae")
+    rmse = model_metrics.get("taux_rmse")
+    mape = model_metrics.get("taux_mape_pct")
+    m1.metric("R² (taux reconstruit)", f"{r2:.3f}" if r2 is not None else "N/A")
+    m2.metric("MAE", f"{mae:.2f} pp" if mae is not None else "N/A")
+    m3.metric("RMSE", f"{rmse:.2f} pp" if rmse is not None else "N/A")
+    m4.metric("MAPE", f"{mape:.1f} %" if mape is not None else "N/A")
+    run_id = model_metrics.get("run_id", "")
+    version = model_metrics.get("version", "?")
+    n_features = model_metrics.get("n_features", 24)
+    run_date = model_metrics.get("run_date", "—")
+    st.caption(
+        f"Run `{run_id[:8]}` · v{version} · "
+        f"XGBoost sur résidu (taux − station_trend_avg) · {n_features} features · {run_date}"
+    )
+else:
+    m1.metric("R² (taux reconstruit)", "—")
+    m2.metric("MAE", "—")
+    m3.metric("RMSE", "—")
+    m4.metric("MAPE", "—")
+    st.caption("API ou MLflow inaccessible — métriques indisponibles.")
 st.divider()
 
 # ── Accès direct aux interfaces natives ──────────────────────────────────────

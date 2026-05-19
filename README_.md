@@ -787,8 +787,8 @@ streamlit/
 
 | Page | Contenu |
 |------|---------|
-| **Accueil** | Status live de chaque service · Graphique continuité HuggingFace (Plotly, cible 288/j) · Architecture · Métriques modèle · Liens natifs |
-| **Validation** | Tests fonctionnels par onglet (API, MLflow, Prometheus, Nginx, pytest runner) · Grafana et Airflow : descriptions statiques avec lien direct (pas de duplication des statuts de l'Accueil) |
+| **Accueil** | Status live de chaque service · Graphique continuité HuggingFace (Plotly, cible 288/j) · Architecture · Métriques modèle dynamiques (R², MAE, RMSE, MAPE via MLflow API) · Liens natifs |
+| **Validation** | Tests fonctionnels par onglet (API, MLflow, Prometheus, Nginx, pytest runner) · Grafana : description statique avec lien direct · Airflow : schéma TaskFlow complet (preflight, short_circuit, quality gate, branching) |
 | **Prédiction** | Sélection station · Contexte temporel et météo · Prédiction POST /predict · Gauge Plotly · Alerte green/yellow/red |
 
 ### Commandes
