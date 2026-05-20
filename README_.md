@@ -806,169 +806,114 @@ make shell-streamlit   # Shell dans le conteneur
 
 ---
 
-## Orchestration Airflow (Phase 3)
+## Orchestration Airflow (Phase 3 — intégration feait-airflow)
 
-Airflow orchestre l'exécution quotidienne du pipeline DVC, valide la qualité du modèle produit, et recharge l'API uniquement si les seuils sont atteints.
+Airflow orchestre la détection de nouveaux fichiers HuggingFace, déclenche le pipeline ML, et notifie par email. L'exécuteur est **CeleryExecutor** avec un broker Redis.
 
 ### Architecture des services
 
 ```
 airflow-db (Postgres 15)  ←─── airflow-init (migration + user admin)
-        │
+redis (broker Celery)               │
+        │                           │
         ├──► airflow-webserver :8080 ──► nginx :8090  ← UI accessible
         │
-        └──► airflow-scheduler (LocalExecutor)
-                    │
-                    │  Docker-out-of-Docker
-                    │  /var/run/docker.sock (monté)
-                    │  HOST_PROJECT_ROOT    (monté)
-                    ▼
-        docker compose run --rm --no-deps ml_training <cmd>
+        ├──► airflow-scheduler  (distribue les tâches via Redis)
+        │
+        ├──► airflow-worker     (exécute les PythonOperators)
+        │         │ subprocess → scripts ML directement dans le conteneur
+        │         │ ./ml/, ./data/, ./shared/ montés en volume
+        │
+        └──► flower :5555 ──► nginx :5555  ← monitoring Celery
 ```
 
-### Architecture du DAG `velib_pipeline`
+Scripts ML exécutés **dans le conteneur airflow-worker** (pas de Docker-out-of-Docker) :
+`ml.src.data.load_from_hf` → `ml.src.data.make_dataset` → `ml.src.features.build_features` → `ml.src.models.train_model`
 
-Cron : `0 4 * * *` — tous les jours à 04h00 UTC (heure creuse).
-Implémenté avec la **TaskFlow API** (Airflow 2.x) : `@task`, `@task_group`, `@task.short_circuit`, `@task.branch`, XCom typés.
+### DAG `velib_ml_pipeline`
+
+Planification : toutes les 6h. PythonSensor HuggingFace en mode `reschedule` (libère le worker entre les pokes).
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│  preflight_checks  (@task_group — tâches parallèles)                        │
-│                                                                             │
-│  check_hf_connectivity ─┐                                                  │
-│  check_mlflow_health   ─┼─► (toutes OK ?)                                  │
-│  check_api_alive       ─┘                                                  │
-└──────────────────────────────────┬──────────────────────────────────────────┘
-                                   │
-                                   ▼
-                    ┌──────────────────────────────┐
-                    │  dvc_status_check             │
-                    │  (@task.short_circuit)        │
-                    │                              │
-                    │  dvc status → changements ?  │
-                    │  Non → court-circuit total   │
-                    │  Oui → continuer             │
-                    └──────────────┬───────────────┘
-                                   │ Oui
-                                   ▼
-                    ┌──────────────────────────────┐
-                    │  dvc_repro                   │
-                    │  (BashOperator)              │
-                    │                              │
-                    │  docker compose run          │
-                    │  ml_training dvc repro       │
-                    │  ← 5 stages DVC, ~5 min      │
-                    └──────────────┬───────────────┘
-                                   │
-                                   ▼
-                    ┌──────────────────────────────┐
-                    │  parse_metrics  (@task)       │
-                    │                              │
-                    │  lit data/outputs/           │
-                    │  metrics.json                │
-                    │  → XCom : {r2, mae, mape,    │
-                    │            run_id, timestamp} │
-                    └──────────────┬───────────────┘
-                                   │ XCom
-                                   ▼
-                    ┌──────────────────────────────┐
-                    │  gate_metrics  (@task)        │
-                    │                              │
-                    │  R²  ≥ 0.75                  │
-                    │  MAE ≤ 12.0 pp               │
-                    │  MAPE ≤ 50 %                 │
-                    │  → XCom : bool               │
-                    └──────────────┬───────────────┘
-                                   │ XCom
-                                   ▼
-                    ┌──────────────────────────────┐
-                    │  branch_on_gate (@task.branch)│
-                    └───────┬──────────────┬────────┘
-                            │ gate OK      │ gate KO
-                            ▼              ▼
-┌──────────────────────────────────────────────────────────────────┐
-│  deployment  (@task_group)                                        │
-│                                                                  │
-│  promote_model              skip_promotion                       │
-│  (BashOperator)             (EmptyOperator)                      │
-│  POST /model/reload         modèle précédent garde l'alias       │
-│  jq -e '.alias=="staging"'  staging — aucun rollback nécessaire  │
-│         │                          │                             │
-│         └──────────┬───────────────┘                             │
-│                    ▼                                             │
-│          smoke_test (BashOperator)                               │
-│          TriggerRule: NONE_FAILED_MIN_ONE_SUCCESS                │
-│          GET /health | jq '.status == "ok"'                      │
-└──────────────────────────────────────────────────────────────────┘
+sense_new_data  (PythonSensor — poll HF toutes les 30 min, timeout 5h)
+        │
+        ▼
+load_from_hf    (PythonOperator — télécharge le snapshot CSV)
+        │
+        ▼
+check_data_changed  (BranchPythonOperator — hash SHA du snapshot)
+        │                      │
+        ▼ données changées     ▼ inchangées
+make_dataset              skip_training
+        │                      │
+build_features             (no-op)
+        │                      │
+train_model                    │
+        └──────────┬────────────┘
+                   ▼
+           notify_success  (EmailOperator — trigger: none_failed_min_one_success)
 ```
 
 ### Tâches du DAG
 
-| Tâche | Type Airflow | Rôle |
+| Tâche | Type | Rôle |
 |---|---|---|
-| `preflight_checks.check_hf_connectivity` | `BashOperator` | curl HuggingFace, retries×3 |
-| `preflight_checks.check_mlflow_health` | `BashOperator` | curl MLflow `/health`, retries×3 |
-| `preflight_checks.check_api_alive` | `BashOperator` | jq `has("status")` sur `/health` |
-| `dvc_status_check` | `@task.short_circuit` | court-circuit si pipeline DVC à jour |
-| `dvc_repro` | `BashOperator` | `docker compose run ml_training dvc repro` |
-| `parse_drift` | `@task` | lit `drift_metrics.json` → XCom (parallèle à `parse_metrics`) |
-| `parse_metrics` | `@task` | lit `metrics.json` → XCom typé |
-| `gate_metrics` | `@task` | valide R², MAE, MAPE → XCom bool |
-| `branch_on_gate` | `@task.branch` | route vers promote ou skip |
-| `deployment.promote_model` | `BashOperator` | `POST /model/reload` + validation jq |
-| `deployment.skip_promotion` | `EmptyOperator` | branche de non-déploiement documentée |
-| `deployment.smoke_test` | `BashOperator` | vérification finale API — toujours exécutée |
-
-### Seuils du quality gate
-
-| Métrique | Seuil | Valeur baseline (run 849635f4) |
-|---|---|---|
-| `taux_r2` | ≥ 0.75 | 0.863 |
-| `taux_mae` | ≤ 12.0 pp | 7.44 pp |
-| `taux_mape_pct` | ≤ 50 % | 32.7 % |
-
-En cas d'échec du gate, le DAG se termine sans erreur (branche `skip_promotion`),
-le modèle en mémoire API reste inchangé, et le log structuré JSON indique les métriques hors-seuil.
+| `sense_new_data` | `PythonSensor` | Détecte un nouveau fichier HF (state file) |
+| `load_from_hf` | `PythonOperator` | Télécharge le snapshot CSV depuis HuggingFace |
+| `check_data_changed` | `BranchPythonOperator` | Compare le hash SHA — branching |
+| `make_dataset` | `PythonOperator` | Nettoyage → `data/interim/` |
+| `build_features` | `PythonOperator` | Feature engineering → `data/processed/` |
+| `train_model` | `PythonOperator` | XGBoost + MLflow tracking |
+| `skip_training` | `PythonOperator` | No-op documenté |
+| `notify_success` | `EmailOperator` | Alerte email post-entraînement |
 
 ### Prérequis avant de démarrer Airflow
 
-Deux variables **obligatoires** dans `.env` :
+Variables **obligatoires** dans `.env` :
 
 ```bash
-# Chemin absolu du projet sur l'hôte (pour DooD)
-HOST_PROJECT_ROOT=$(pwd)
+# Clé Fernet — chiffrement des connexions Airflow
+AIRFLOW_FERNET_KEY=$(python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
 
-# GID du groupe docker (pour accès socket)
-DOCKER_GID=$(stat -c '%g' /var/run/docker.sock)
+# Identifiants Airflow
+AIRFLOW_USER=airflow
+AIRFLOW_PASSWORD=airflow
+
+# SMTP pour les alertes (optionnel — désactiver email_on_failure si non configuré)
+AIRFLOW_SMTP_USER=ton.email@gmail.com
+AIRFLOW_SMTP_PASSWORD=ton_app_password
+AIRFLOW_ALERT_EMAIL=ton.email@example.com
 ```
 
 ### Démarrage
 
 ```bash
-# 1. Construire l'image Airflow
+# 1. Construire les images
 make build
 
 # 2. Initialiser la base de données Airflow (une seule fois)
 make airflow-init
 
-# 3. Démarrer les services Airflow
+# 3. Démarrer les 6 services Airflow
 make airflow-up
 
-# 4. UI disponible sur http://localhost:8090
-#    (identifiants définis par AIRFLOW_ADMIN_USER / AIRFLOW_ADMIN_PASSWORD)
+# 4. UIs disponibles :
+#    Airflow  → http://localhost:8090  (identifiants AIRFLOW_USER / AIRFLOW_PASSWORD)
+#    Flower   → http://localhost:5555  (monitoring workers Celery)
 ```
 
 ### Commandes courantes
 
 ```bash
 make airflow-trigger     # Déclencher le DAG manuellement
-make airflow-logs        # Logs du scheduler
-make logs-airflow        # Logs du webserver
-make airflow-down        # Arrêter Airflow sans toucher au reste de la stack
+make airflow-logs        # Logs scheduler + worker
+make logs-airflow        # Logs webserver + flower
+make airflow-down        # Arrêter les 6 services Airflow
 make shell-airflow       # Shell interactif dans le scheduler
 ```
 
-> **Ports** : l'UI Airflow est exposée via Nginx sur `http://localhost:${AIRFLOW_PORT}` (défaut : `8090`).
+> **Ports** : UI Airflow via Nginx sur `http://localhost:${AIRFLOW_PORT}` (défaut : `8090`).
+> Flower via Nginx sur `http://localhost:5555`.
 > Aucun service Airflow n'est accessible directement depuis l'extérieur.
 
 ---

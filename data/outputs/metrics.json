@@ -1,7 +1,7 @@
 {
-  "run_id": "849635f4e52b4e7ebd61a57c53515b35",
+  "run_id": "7d9c0d44f8ed4fd796233e7614f0ca7a",
   "model_name": "velib_fill_rate_predictor",
-  "timestamp": "2026-05-19T10:46:10+00:00",
+  "timestamp": "2026-05-20T08:29:59+00:00",
   "residual_mae": 7.450140234157018,
   "residual_rmse": 10.93691472793067,
   "residual_r2": 0.7857022281565668,

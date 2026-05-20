@@ -22,9 +22,8 @@ Convention :
 """
 from __future__ import annotations
 
-from pathlib import Path
-
 import os
+from pathlib import Path
 
 from pydantic import Field, SecretStr, computed_field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -40,17 +39,20 @@ _REPO_ROOT = BASE_DIR = (
     if "APP_DIR" in os.environ
     else Path(__file__).resolve().parent.parent.parent
 )
+#_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+#BASE_DIR = Path(os.getenv("APP_DIR", "/app"))
 
 
 class Settings(BaseSettings):
-    """Configuration globale du projet Vélib'."""
+    # API
+    api_url: str = "https://mon-api.example.com"
+    critical_threshold: int = 3
 
-    model_config = SettingsConfigDict(
-        env_file=_REPO_ROOT / ".env",
-        env_file_encoding="utf-8",
-        case_sensitive=False,        # HF_TOKEN ou hf_token : indifférent
-        extra="ignore",              # ignore les variables d'env non déclarées
-    )
+    # Paths
+    data_dir: Path = BASE_DIR / "data"
+
+    # Debug
+    debug: bool = False
 
     # ─────────────────────────────────────────────────────────────────────────
     # HUGGINGFACE — source de la collecte continue
@@ -203,6 +205,14 @@ class Settings(BaseSettings):
         default="velib-metropole-model",
         description="Nom du modèle dans le MLflow Registry.",
     )
+    ml_model_stage: str = Field(
+        default="staging",
+        description="Alias MLflow utilisé par le pipeline d'entraînement.",
+    )
+    api_model_stage: str = Field(
+        default="production",
+        description="Alias MLflow utilisé par l'API pour charger le modèle.",
+    )
 
     # ─────────────────────────────────────────────────────────────────────────
     # VALIDATEURS
@@ -280,6 +290,10 @@ class Settings(BaseSettings):
         """Racine du repo, déduite de l'emplacement de ce fichier."""
         return _REPO_ROOT
 
+    @property
+    def base_dir(self) -> Path:
+        return BASE_DIR
+
     # ─────────────────────────────────────────────────────────────────────────
     # MÉTHODES UTILITAIRES
     # ─────────────────────────────────────────────────────────────────────────
@@ -301,6 +315,12 @@ class Settings(BaseSettings):
         ):
             d.mkdir(parents=True, exist_ok=True)
 
+    model_config = SettingsConfigDict(
+        env_file=_REPO_ROOT / ".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,        # HF_TOKEN ou hf_token : indifférent
+        extra="ignore",              # ignore les variables d'env non déclarées
+    )
 
 # Instance singleton — importée par tous les services
 settings = Settings()

@@ -66,8 +66,7 @@ def api_metrics() -> tuple[int, str]:
 
 # ── MLflow ───────────────────────────────────────────────────────────────────
 def mlflow_health() -> tuple[int, Any]:
-    # MLflow n'a pas de /health officiel — on utilise l'API expériments
-    return _get(f"{MLFLOW_BASE}/api/2.0/mlflow/experiments/list?max_results=1")
+    return _get(f"{MLFLOW_BASE}/health")
 
 def mlflow_models() -> tuple[int, Any]:
     return _get(f"{MLFLOW_BASE}/api/2.0/mlflow/registered-models/list?max_results=5")

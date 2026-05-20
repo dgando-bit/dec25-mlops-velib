@@ -1,10 +1,117 @@
+x-airflow-common: &airflow-common
+  build:
+    context: .
+    dockerfile: airflow/Dockerfile
+  environment: &airflow-common-env
+    AIRFLOW__WEBSERVER__BASE_URL: http://localhost:${AIRFLOW_PORT:-8090}
+    AIRFLOW__WEBSERVER__ENABLE_PROXY_FIX: "true"
+    AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:${AIRFLOW_DB_PASSWORD}@airflow-db/airflow
+    AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:${AIRFLOW_DB_PASSWORD}@airflow-db/airflow
+    AIRFLOW__CELERY__BROKER_URL: redis://:@redis:6379/0
+    AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY}
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__API__AUTH_BACKENDS: "airflow.api.auth.backend.basic_auth"
+    AIRFLOW__SMTP__SMTP_HOST: "smtp.gmail.com"
+    AIRFLOW__SMTP__SMTP_PORT: 587
+    AIRFLOW__SMTP__SMTP_USER: ${AIRFLOW_SMTP_USER}
+    AIRFLOW__SMTP__SMTP_PASSWORD: ${AIRFLOW_SMTP_PASSWORD}
+    AIRFLOW__SMTP__SMTP_MAIL_FROM: ${AIRFLOW_SMTP_USER}
+    MLFLOW_TRACKING_URI: http://mlflow-server:5000
+  volumes:
+    - ./airflow/dags:/opt/airflow/dags
+    - ./airflow/logs:/opt/airflow/logs
+    - ./airflow/plugins:/opt/airflow/plugins
+    - ./data:/app/data
+    - ./ml:/app/ml
+    - ./shared:/app/shared
+    - ./mlflow/artifacts:/app/mlflow/artifacts
+  user: "${AIRFLOW_UID:-50000}:${AIRFLOW_GID:-0}"
+  networks:
+    - mlops-net
+  depends_on:
+    redis:
+      condition: service_healthy
+    airflow-db:
+      condition: service_healthy
+
 networks:
   mlops-net:
     driver: bridge
 
 services:
+  airflow-db:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: ${AIRFLOW_DB_PASSWORD}
+      POSTGRES_DB: airflow
+    volumes:
+      - airflow_db_data:/var/lib/postgresql/data
+    networks:
+      - mlops-net
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 5s
+      retries: 5
+    restart: always
+
+  redis:
+    image: redis:latest
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 30s
+      retries: 50
+    networks:
+      - mlops-net
+    restart: always
+
+  airflow-webserver:
+    <<: *airflow-common
+    command: webserver
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+    restart: always
+
+  airflow-scheduler:
+    <<: *airflow-common
+    command: scheduler
+    restart: always
+
+  airflow-worker:
+    <<: *airflow-common
+    command: celery worker
+    restart: always
+
+  airflow-init:
+    <<: *airflow-common
+    command: version
+    environment:
+      <<: *airflow-common-env
+      _AIRFLOW_DB_MIGRATE: "true"
+      _AIRFLOW_WWW_USER_CREATE: "true"
+      _AIRFLOW_WWW_USER_USERNAME: ${AIRFLOW_USER:-airflow}
+      _AIRFLOW_WWW_USER_PASSWORD: ${AIRFLOW_PASSWORD:-airflow}
+
+  flower:
+    <<: *airflow-common
+    command: celery flower
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:5555/"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+    restart: always
+
+  # ─── Infrastructure ───────────────────────────────────────────────────────
   mlflow-db:
     image: postgres:15
+#    container_name: dec25-mlops-mlflow-db
     env_file: .env
     environment:
       POSTGRES_DB: ${MLFLOW_DB}
@@ -24,8 +131,8 @@ services:
     build:
       context: .
       dockerfile: mlflow/Dockerfile
-    env_file:
-      - .env
+#    container_name: dec25-mlops-mlflow-server
+    env_file: .env
     environment:
       MLFLOW_BACKEND_STORE_URI: postgresql://${MLFLOW_USER}:${MLFLOW_PASSWORD}@mlflow-db/${MLFLOW_DB}
       MLFLOW_DEFAULT_ARTIFACT_ROOT: /app/mlflow/artifacts
@@ -43,13 +150,17 @@ services:
       --backend-store-uri postgresql://${MLFLOW_USER}:${MLFLOW_PASSWORD}@mlflow-db/${MLFLOW_DB}
       --default-artifact-root /app/mlflow/artifacts
 
+  # ─── ML ───────────────────────────────────────────────────────────────────
   ml_training:
     build:
       context: .
       dockerfile: ml/Dockerfile
       target: training
+#    container_name: dec25-mlops-velib-ml
+    env_file: .env
     environment:
       MLFLOW_TRACKING_URI: http://mlflow-server:5000
+      ML_MODEL_STAGE: ${ML_MODEL_STAGE:-staging}
     volumes:
       - ./ml:/app/ml
       - ./data:/app/data
@@ -70,8 +181,8 @@ services:
       context: .
       dockerfile: ml/Dockerfile
       target: jupyter
-    env_file:
-      - .env
+#    container_name: dec25-mlops-jupyter
+    env_file: .env
     environment:
       JUPYTER_TOKEN: ${JUPYTER_TOKEN}
       MLFLOW_TRACKING_URI: http://mlflow-server:5000
@@ -81,6 +192,8 @@ services:
       - ./shared:/app/shared
       - ./ml/notebooks:/app/notebooks
       - ./data:/app/data
+    tmpfs:
+      - /home/appuser/.local/share/jupyter/runtime:uid=1000,gid=1000
     user: "1000:1000"
     networks:
       - mlops-net
@@ -94,21 +207,31 @@ services:
       --ServerApp.disable_check_xsrf=True
     restart: unless-stopped
 
+  # ─── API ──────────────────────────────────────────────────────────────────
   api:
     build:
       context: .
       dockerfile: api/Dockerfile
+#    container_name: dec25-mlops-velib-api
+    env_file:
+      - .env
     depends_on:
       - mlflow-server
     environment:
       MLFLOW_TRACKING_URI: http://mlflow-server:5000
+      API_MODEL_STAGE: ${API_MODEL_STAGE:-production}
     volumes:
       - ./mlflow/artifacts:/app/mlflow/artifacts
+      - ./shared:/app/shared
+      - ./api:/app/api
     networks:
       - mlops-net
+    command: uvicorn api.velib_api.main:app --host 0.0.0.0 --port 8000 --reload
 
+  # ─── Monitoring ───────────────────────────────────────────────────────────
   prometheus:
     image: prom/prometheus:latest
+#    container_name: dec25-mlops-prometheus
     volumes:
       - ./deployments/prometheus:/etc/prometheus:ro
       - prometheus_data:/prometheus
@@ -123,6 +246,7 @@ services:
 
   grafana:
     image: grafana/grafana:latest
+#    container_name: dec25-mlops-grafana
     environment:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
       GF_USERS_ALLOW_SIGN_UP: "false"
@@ -134,106 +258,19 @@ services:
       - prometheus
     networks:
       - mlops-net
-
-  airflow-db:
-    image: postgres:15
-    environment:
-      POSTGRES_DB: airflow
-      POSTGRES_USER: airflow
-      POSTGRES_PASSWORD: ${AIRFLOW_DB_PASSWORD:-airflow_secret}
+  
+  node-exporter:
+    image: prom/node-exporter:latest
+#    container_name: dec25-mlops-node-exporter
+    pid: host
     volumes:
-      - airflow_db_data:/var/lib/postgresql/data
-    networks:
-      - mlops-net
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U airflow -d airflow"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-  airflow-init:
-    build:
-      context: deployments/airflow/
-      dockerfile: Dockerfile
-    depends_on:
-      airflow-db:
-        condition: service_healthy
-    environment:
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:${AIRFLOW_DB_PASSWORD:-airflow_secret}@airflow-db/airflow
-      AIRFLOW__CORE__EXECUTOR: LocalExecutor
-      AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET_KEY:-changeme_in_production}
-      _AIRFLOW_DB_MIGRATE: "true"
-      _AIRFLOW_WWW_USER_CREATE: "true"
-      _AIRFLOW_WWW_USER_USERNAME: ${AIRFLOW_ADMIN_USER:-admin}
-      _AIRFLOW_WWW_USER_PASSWORD: ${AIRFLOW_ADMIN_PASSWORD:-admin}
-      _AIRFLOW_WWW_USER_FIRSTNAME: Admin
-      _AIRFLOW_WWW_USER_LASTNAME: Velib
-      _AIRFLOW_WWW_USER_ROLE: Admin
-      _AIRFLOW_WWW_USER_EMAIL: admin@velib.local
-    command: version
-    networks:
-      - mlops-net
-
-  airflow-webserver:
-    build:
-      context: deployments/airflow/
-      dockerfile: Dockerfile
-    depends_on:
-      airflow-db:
-        condition: service_healthy
-      airflow-init:
-        condition: service_completed_successfully
-    environment:
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:${AIRFLOW_DB_PASSWORD:-airflow_secret}@airflow-db/airflow
-      AIRFLOW__CORE__EXECUTOR: LocalExecutor
-      AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/dags
-      AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET_KEY:-changeme_in_production}
-      AIRFLOW__WEBSERVER__BASE_URL: http://localhost:${AIRFLOW_PORT:-8090}
-      AIRFLOW__WEBSERVER__ENABLE_PROXY_FIX: "true"
-    volumes:
-      - ./deployments/airflow/dags:/opt/airflow/dags:ro
-      - airflow_logs:/opt/airflow/logs
-    command: airflow webserver
-    networks:
-      - mlops-net
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 60s
-
-  airflow-scheduler:
-    build:
-      context: deployments/airflow/
-      dockerfile: Dockerfile
-    depends_on:
-      airflow-db:
-        condition: service_healthy
-      airflow-init:
-        condition: service_completed_successfully
-    environment:
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:${AIRFLOW_DB_PASSWORD:-airflow_secret}@airflow-db/airflow
-      AIRFLOW__CORE__EXECUTOR: LocalExecutor
-      AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/dags
-      AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET_KEY:-changeme_in_production}
-      HOST_PROJECT_ROOT: ${HOST_PROJECT_ROOT}
-      MLFLOW_TRACKING_URI: http://mlflow-server:5000
-    volumes:
-      - ./deployments/airflow/dags:/opt/airflow/dags:ro
-      - airflow_logs:/opt/airflow/logs
-      - /var/run/docker.sock:/var/run/docker.sock
-      - ${HOST_PROJECT_ROOT}:${HOST_PROJECT_ROOT}
-    group_add:
-      - "${DOCKER_GID:-999}"
-    command: airflow scheduler
-    healthcheck:
-      test: ["CMD-SHELL", "airflow jobs check --job-type SchedulerJob --hostname $(hostname)"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 60s
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
     networks:
       - mlops-net
     restart: unless-stopped
@@ -261,19 +298,23 @@ services:
       - api
     restart: unless-stopped
 
+  # ─── Reverse Proxy ────────────────────────────────────────────────────────
+
   nginx:
     build:
       context: deployments/nginx/
       dockerfile: Dockerfile
+#    container_name: dec25-mlops-nginx
     ports:
       - "8080:80"
-      - "${MLFLOW_PORT}:5000"
+      - "443:443"
+      - "${MLFLOW_PORT:-5000}:5000"
       - "8888:8888"
       - "9090:9090"
       - "3000:3000"
       - "${AIRFLOW_PORT:-8090}:8090"
       - "${STREAMLIT_PORT:-8501}:8501"
-      - "443:443"
+      - "5555:5555"
     volumes:
       - ./deployments/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./deployments/nginx/errors:/etc/nginx/errors:ro
@@ -286,6 +327,7 @@ services:
       - prometheus
       - grafana
       - airflow-webserver
+      - flower
       - streamlit
     networks:
       - mlops-net

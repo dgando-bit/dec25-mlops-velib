@@ -22,6 +22,7 @@ numpy==2.2.6                 # numpy 2.x requis depuis mlflow 2.18+
 scikit-learn==1.5.2          # supporte numpy 2 depuis 1.5.0
 xgboost==3.0.2
 optuna==3.6.1
+lightgbm
 
 # ── Tracking ──────────────────────────────────────────────────────────────────
 mlflow==2.22.0               # aligné sur mlflow-server (2.22.0)
