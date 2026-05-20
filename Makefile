@@ -146,8 +146,12 @@ check-env:
 
 setup: check-env
 	@echo "$(CYAN)→ Création des dossiers nécessaires...$(RESET)"
-	@mkdir -p data/raw data/processed data/interim mlflow/artifacts ml/notebooks
+	@mkdir -p data/raw data/processed data/interim ml/notebooks
 	@mkdir -p airflow/dags airflow/logs airflow/plugins
+	@if [ -d mlflow/artifacts ] && [ ! -w mlflow/artifacts ]; then \
+		sudo chown $$(id -u):$$(id -g) mlflow/artifacts; \
+	fi
+	@mkdir -p mlflow/artifacts
 	@chmod 777 mlflow/artifacts
 	@echo "$(GREEN)✓ Dossiers créés$(RESET)"
 	@echo "$(CYAN)→ Vérification de Docker...$(RESET)"
