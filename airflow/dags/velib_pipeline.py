@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
+import sys
 import subprocess
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -89,7 +90,7 @@ def _sense_new_hf_file() -> bool:
 def _load_from_hf() -> None:
     """Télécharge les données depuis HuggingFace."""
     result = subprocess.run(
-        ["python", "-m", "ml.src.data.load_from_hf"],
+        [sys.executable, "-m", "ml.src.data.load_from_hf"],
         cwd="/app",
         capture_output=True,
         text=True,
@@ -136,7 +137,7 @@ def _check_data_changed(**context) -> str:
 def _make_dataset() -> None:
     """Nettoie les données brutes → interim."""
     result = subprocess.run(
-        ["python", "-m", "ml.src.data.make_dataset"],
+        [sys.executable, "-m", "ml.src.data.make_dataset"],
         cwd="/app",
         capture_output=True,
         text=True,
@@ -149,7 +150,7 @@ def _make_dataset() -> None:
 def _build_features() -> None:
     """Feature engineering → train/test parquet."""
     result = subprocess.run(
-        ["python", "-m", "ml.src.features.build_features"],
+        [sys.executable, "-m", "ml.src.features.build_features"],
         cwd="/app",
         capture_output=True,
         text=True,
@@ -162,7 +163,7 @@ def _build_features() -> None:
 def _train_model() -> None:
     """Entraîne le modèle et le logue dans MLflow."""
     result = subprocess.run(
-        ["python", "-m", "ml.src.models.train_model"],
+        [sys.executable, "-m", "ml.src.models.train_model"],
         cwd="/app",
         capture_output=True,
         text=True,
