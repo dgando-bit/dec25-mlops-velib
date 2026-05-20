@@ -190,8 +190,8 @@ class Settings(BaseSettings):
                     "MLFLOW_TRACKING_URI=http://localhost:5000.",
     )
     mlflow_artifact_uri: str = Field(
-        default="file:///app/mlflow/artifacts",
-        description="URI de stockage des artefacts MLflow (bind mount Docker).",
+        default="mlflow-artifacts:/",
+        description="URI de stockage des artefacts MLflow (proxy HTTP via --serve-artifacts).",
     )
     mlflow_experiment_name: str = Field(
         default="velib-metropole",

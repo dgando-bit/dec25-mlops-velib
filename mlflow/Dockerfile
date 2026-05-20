@@ -24,4 +24,5 @@ CMD mlflow server \
     --host 0.0.0.0 \
     --port 5000 \
     --backend-store-uri ${MLFLOW_BACKEND_STORE_URI} \
-    --default-artifact-root /app/mlflow/artifacts
+    --serve-artifacts \
+    --artifacts-destination /app/mlflow/artifacts

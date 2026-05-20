@@ -65,7 +65,7 @@ stages:
     cmd: python -m ml.src.features.build_features
     deps:
       - ml/src/features/build_features.py
-      - ml/src/features/_helpers.py
+      - ml/src/utils/_helpers.py
       - shared/shared/config.py
       - shared/shared/logger.py
       - shared/shared/utils/data_cleaning.py

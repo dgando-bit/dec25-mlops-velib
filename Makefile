@@ -36,7 +36,8 @@ SERVICES := mlflow-db mlflow-server ml_training jupyter-service api
         check-env setup \
         dvc-pull dvc-push dvc-status dvc-add pipeline \
         airflow-init airflow-up airflow-down airflow-logs airflow-trigger \
-        streamlit-up streamlit-down logs-streamlit shell-streamlit
+        streamlit-up streamlit-down logs-streamlit shell-streamlit \
+        mlflow-reset-experiment
 
 
 # =============================================================================
@@ -83,6 +84,7 @@ help:
 	@echo ""
 	@echo "$(BOLD)🤖 ML$(RESET)"
 	@echo "  $(GREEN)make train$(RESET)            Lancer un job d'entraînement"
+	@echo "  $(GREEN)make mlflow-reset-experiment$(RESET) Supprimer l'expérience MLflow (migration artifact URI)"
 	@echo ""
 	@echo "$(BOLD)📦 DVC$(RESET)"
 	@echo "  $(GREEN)make dvc-pull$(RESET)         Récupérer les données depuis DagsHub"
@@ -146,6 +148,7 @@ setup: check-env
 	@echo "$(CYAN)→ Création des dossiers nécessaires...$(RESET)"
 	@mkdir -p data/raw data/processed data/interim mlflow/artifacts ml/notebooks
 	@mkdir -p airflow/dags airflow/logs airflow/plugins
+	@chmod 777 mlflow/artifacts
 	@echo "$(GREEN)✓ Dossiers créés$(RESET)"
 	@echo "$(CYAN)→ Vérification de Docker...$(RESET)"
 	@docker info > /dev/null 2>&1 || (echo "$(RED)✗ Docker n'est pas lancé$(RESET)" && exit 1)
@@ -323,6 +326,22 @@ test-mlflow:
 	@docker exec dec25-mlops-mlflow-server python -c \
 		"import mlflow; mlflow.set_tracking_uri('http://localhost:5000'); print('  $(GREEN)✓ MLflow client OK$(RESET)')" \
 		2>/dev/null || echo "  $(RED)✗ Erreur client MLflow$(RESET)"
+
+mlflow-reset-experiment:
+	@echo "$(CYAN)→ Suppression de l'expérience 'velib-metropole' (migration vers mlflow-artifacts:/)...$(RESET)"
+	@MLFLOW_PORT=$$(grep MLFLOW_PORT $(ENV_FILE) | cut -d= -f2) && \
+	BASE_URL="http://localhost:$$MLFLOW_PORT/api/2.0/mlflow" && \
+	EXP_ID=$$(curl -sf "$$BASE_URL/experiments/get-by-name?experiment_name=velib-metropole" \
+		| python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('experiment',{}).get('experiment_id',''))" 2>/dev/null) && \
+	if [ -n "$$EXP_ID" ]; then \
+		curl -sf -X POST "$$BASE_URL/experiments/delete" \
+			-H "Content-Type: application/json" \
+			-d "{\"experiment_id\":\"$$EXP_ID\"}" > /dev/null && \
+		echo "  $(GREEN)✓ Expérience $$EXP_ID supprimée$(RESET)"; \
+	else \
+		echo "  $(YELLOW)⚠ Expérience introuvable (stack down ou déjà supprimée)$(RESET)"; \
+	fi
+	@echo "$(GREEN)✓ Relance 'make pipeline' pour recréer avec mlflow-artifacts:/$(RESET)"
 
 test-api:
 	@echo "$(CYAN)→ Test des endpoints API...$(RESET)"
