@@ -216,11 +216,11 @@ with DAG(
         execution_timeout=timedelta(hours=1),  # ← ajouté
         on_failure_callback=on_failure_callback,
     )
-    # # 3. Vérification du hash
-    # check_data_changed = BranchPythonOperator(
-    #     task_id="check_data_changed",
-    #     python_callable=_check_data_changed,
-    # )
+    # 3. Vérification du hash
+    check_data_changed = BranchPythonOperator(
+        task_id="check_data_changed",
+        python_callable=_check_data_changed,
+    )
 
     # 4a. Nettoyage des données
     make_dataset = PythonOperator(
@@ -229,11 +229,11 @@ with DAG(
         on_failure_callback=on_failure_callback,
     )
 
-    # # 4b. Skip si données inchangées
-    # skip_training = PythonOperator(
-    #     task_id="skip_training",
-    #     python_callable=_skip_training,
-    # )
+    # 4b. Skip si données inchangées
+    skip_training = PythonOperator(
+        task_id="skip_training",
+        python_callable=_skip_training,
+    )
 
     # 5. Feature engineering
     build_features = PythonOperator(
@@ -263,6 +263,25 @@ with DAG(
         trigger_rule="none_failed_min_one_success",
     )
 
+    notify_skipped = EmailOperator(
+        task_id="notify_skipped",
+        to=os.getenv("AIRFLOW_ALERT_EMAIL", "mlops@example.com"),
+        subject="ℹ️ Pipeline Vélib — Données inchangées",
+        html_content="""
+        <h2>Pipeline Vélib ignoré</h2>
+
+        <p>
+            Aucune nouvelle donnée détectée.
+        </p>
+
+        <p>
+            L'entraînement du modèle a été skippé.
+        </p>
+
+        <p><b>DAG :</b> velib_ml_pipeline</p>
+        <p><b>Date :</b> {{ ds }}</p>
+        """,
+    )
     # ─── Dépendances ──────────────────────────────────────────────────────────
     #
     #  sense_new_data
@@ -277,10 +296,8 @@ with DAG(
     #       ↓              |
     #  train_model         |
     #       ↓              ↓
-    #        notify_success
+    # notify_success    notify_skipped
     #
-    # var = sense_new_data >> load_from_hf >> check_data_changed
-    # var_1 = check_data_changed >> make_dataset >> build_features >> train_model >> notify_success
-    # var_2 = check_data_changed >> skip_training >> notify_success
-
-    var = sense_new_data >> load_from_hf >> make_dataset >> build_features >> train_model >> notify_success
+    var = sense_new_data >> load_from_hf >> check_data_changed
+    var_1 = check_data_changed >> make_dataset >> build_features >> train_model >> notify_success
+    var_2 = check_data_changed >> skip_training >> notify_skipped
