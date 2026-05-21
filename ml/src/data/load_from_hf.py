@@ -54,6 +54,7 @@ from tenacity import (
 # from shared.config import get_settings
 from shared.config import settings
 from shared.logger import get_logger
+import duckdb
 
 # settings = get_settings()
 logger = get_logger(__name__)
@@ -189,7 +190,7 @@ def _download_one(filename: str, cache_dir: Path) -> Path:
     local_path = Path(_call())
     logger.debug(
         "Fichier téléchargé",
-        extra={"filename": filename, "size_mb": round(local_path.stat().st_size / 1e6, 1)},
+        extra={"h_filename": filename, "size_mb": round(local_path.stat().st_size / 1e6, 1)},
     )
     return local_path
 
@@ -197,31 +198,67 @@ def _download_one(filename: str, cache_dir: Path) -> Path:
 # ─────────────────────────────────────────────────────────────────────────────
 # CONCATÉNATION + DÉDOUBLONNAGE
 # ─────────────────────────────────────────────────────────────────────────────
+# def _read_and_concat(files: list[Path]) -> pd.DataFrame:
+#     """Lit chaque CSV téléchargé et concatène en un seul DataFrame.
+#
+#     Conserve la logique de l'ancien ``load_all_raw`` :
+#         - parse_dates=["datetime"]
+#         - drop_duplicates sur (station_id, datetime)
+#         - tri par (station_id, datetime)
+#     """
+#     dfs: list[pd.DataFrame] = []
+#     for path in files:
+#         df = pd.read_csv(path, parse_dates=["datetime"])
+#         dfs.append(df)
+#         logger.info(
+#             "CSV chargé",
+#             extra={"file": path.name, "rows": len(df)},
+#         )
+#
+#     combined = (
+#         pd.concat(dfs, ignore_index=True)
+#         .drop_duplicates(subset=["station_id", "datetime"])
+#         .sort_values(["station_id", "datetime"])
+#         .reset_index(drop=True)
+#     )
+#     return combined
+
+# Fix — lire par chunks dans _read_and_concat
+# def _read_and_concat(files: list[Path]) -> pd.DataFrame:
+#     """Lit chaque CSV par chunks pour limiter l'empreinte mémoire."""
+#     chunks_all: list[pd.DataFrame] = []
+#
+#     for path in files:
+#         logger.info("Lecture CSV par chunks", extra={"file": path.name})
+#         for chunk in pd.read_csv(
+#             path,
+#             parse_dates=["datetime"],
+#             chunksize=500_000,      # 500k lignes par chunk
+#         ):
+#             chunks_all.append(chunk)
+#
+#         logger.info("CSV chargé", extra={"file": path.name, "chunks": len(chunks_all)})
+#
+#     logger.info("Concaténation des chunks...")
+#     combined = pd.concat(chunks_all, ignore_index=True)
+#     del chunks_all  # libère la mémoire immédiatement
+#
+#     combined = (
+#         combined
+#         .drop_duplicates(subset=["station_id", "datetime"])
+#         .sort_values(["station_id", "datetime"])
+#         .reset_index(drop=True)
+#     )
+#     return combined
+
 def _read_and_concat(files: list[Path]) -> pd.DataFrame:
-    """Lit chaque CSV téléchargé et concatène en un seul DataFrame.
-
-    Conserve la logique de l'ancien ``load_all_raw`` :
-        - parse_dates=["datetime"]
-        - drop_duplicates sur (station_id, datetime)
-        - tri par (station_id, datetime)
+    paths_str = ", ".join(f"'{p}'" for p in files)
+    query = f"""
+        SELECT DISTINCT ON (station_id, datetime) *
+        FROM read_csv_auto([{paths_str}], parse_dates=true)
+        ORDER BY station_id, datetime
     """
-    dfs: list[pd.DataFrame] = []
-    for path in files:
-        df = pd.read_csv(path, parse_dates=["datetime"])
-        dfs.append(df)
-        logger.info(
-            "CSV chargé",
-            extra={"file": path.name, "rows": len(df)},
-        )
-
-    combined = (
-        pd.concat(dfs, ignore_index=True)
-        .drop_duplicates(subset=["station_id", "datetime"])
-        .sort_values(["station_id", "datetime"])
-        .reset_index(drop=True)
-    )
-    return combined
-
+    return duckdb.query(query).df()
 
 # ─────────────────────────────────────────────────────────────────────────────
 # CONSIGNATION DU SNAPSHOT (log humain en plus du parquet)

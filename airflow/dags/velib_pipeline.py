@@ -208,9 +208,9 @@ with DAG(
     load_from_hf = PythonOperator(
         task_id="load_from_hf",
         python_callable=_load_from_hf,
+        execution_timeout=timedelta(hours=1),  # ← ajouté
         on_failure_callback=on_failure_callback,
     )
-
     # 3. Vérification du hash
     check_data_changed = BranchPythonOperator(
         task_id="check_data_changed",

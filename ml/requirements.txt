@@ -16,6 +16,7 @@ pandas==2.3.3
 pyarrow>=16.0,<19            # parquet engine (resserré pour reproductibilité)
 huggingface_hub~=0.36.0      # dernière 0.x stable (API compatible avec notre code)
 tenacity>=8.2,<9             # retry exponentiel
+duckdb>=0.9
 
 # ── ML — versions cohérentes avec la formation MLOps ──────────────────────────
 numpy==2.2.6                 # numpy 2.x requis depuis mlflow 2.18+

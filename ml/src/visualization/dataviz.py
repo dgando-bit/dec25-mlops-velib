@@ -872,8 +872,24 @@ def run_dataviz(write_to_disk: bool = True) -> Path:
         extra={"raw_path": str(raw_path), "cleaned_path": str(cleaned_path)},
     )
 
-    df_raw = pd.read_parquet(raw_path)
-    df_clean = pd.read_parquet(cleaned_path)
+    # df_raw = pd.read_parquet(raw_path)
+    # df_clean = pd.read_parquet(cleaned_path)
+    # Graphe 1 utilise le raw — uniquement datetime et station_id
+    df_raw = pd.read_parquet(
+        raw_path,
+        columns=["station_id", "datetime"]   # ← seulement 2 colonnes
+    )
+
+    # Graphes 2-7 utilisent le cleaned
+    df_clean = pd.read_parquet(
+        cleaned_path,
+        columns=[                             # ← seulement ce qui est utilisé
+            "station_id", "name", "datetime",
+            "taux", "capacity",
+            "apparent_temperature", "weather_code",
+            "is_vacation",
+        ]
+    )
 
     logger.info(
         "Parquets chargés",

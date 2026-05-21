@@ -208,6 +208,10 @@ def add_temporal_lags(
         Nouveau DataFrame avec les colonnes 'lag_<N>min' ajoutées.
         Les lignes avec lag NaN (historique insuffisant) sont supprimées.
     """
+    # Normaliser datetime64[us, UTC] → datetime64[ns, UTC] pour merge_asof
+    df = df.copy()
+    df["datetime"] = df["datetime"].dt.as_unit("ns")
+
     out = df.sort_values(["station_id", "datetime"]).reset_index(drop=True)
 
     def _compute_one_lag(minutes: int, col_name: str) -> pd.Series:
