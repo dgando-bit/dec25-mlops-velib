@@ -96,6 +96,7 @@ services:
       --notebook-dir=/app
       --IdentityProvider.token=${JUPYTER_TOKEN}
       --ServerApp.disable_check_xsrf=True
+      --ServerApp.base_url=/jupyter/
     restart: unless-stopped
 
   api:
@@ -113,6 +114,24 @@ services:
       - ./mlflow/artifacts:/mlflow/artifacts
     networks:
       - mlops-net
+
+  nginx:
+    container_name: dec25-mlops-nginx
+    build:
+      context: ./deployments/nginx
+      dockerfile: Dockerfile
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deployments/nginx/certs:/etc/nginx/certs
+    depends_on:
+      - api
+      - mlflow-server
+      - jupyter-service
+    networks:
+      - mlops-net
+    restart: unless-stopped
 
 volumes:
   mlflow_db_data:
