@@ -2,6 +2,9 @@
 mlflow>=2.10,<3
 huggingface_hub
 pandas>=2.0,<3
+duckdb>=0.9
+xgboost==3.0.2
+lightgbm
 scikit-learn>=1.6,<2
 tenacity
 psycopg2-binary

@@ -53,9 +53,14 @@ def _sense_new_hf_file() -> bool:
     """
     try:
         from huggingface_hub import list_repo_files
-        from shared.config import get_settings
+        from shared.config import settings
 
-        settings = get_settings()
+        # Mode dev : bypass le sensor
+        from airflow.models import Variable
+        if Variable.get("dev_mode", default_var="false") == "true":
+            log.info("Mode dev — sensor bypassed")
+            return True
+
         files = sorted(
             f for f in list_repo_files(
                 repo_id=settings.hf_repo,
@@ -211,11 +216,11 @@ with DAG(
         execution_timeout=timedelta(hours=1),  # ← ajouté
         on_failure_callback=on_failure_callback,
     )
-    # 3. Vérification du hash
-    check_data_changed = BranchPythonOperator(
-        task_id="check_data_changed",
-        python_callable=_check_data_changed,
-    )
+    # # 3. Vérification du hash
+    # check_data_changed = BranchPythonOperator(
+    #     task_id="check_data_changed",
+    #     python_callable=_check_data_changed,
+    # )
 
     # 4a. Nettoyage des données
     make_dataset = PythonOperator(
@@ -224,11 +229,11 @@ with DAG(
         on_failure_callback=on_failure_callback,
     )
 
-    # 4b. Skip si données inchangées
-    skip_training = PythonOperator(
-        task_id="skip_training",
-        python_callable=_skip_training,
-    )
+    # # 4b. Skip si données inchangées
+    # skip_training = PythonOperator(
+    #     task_id="skip_training",
+    #     python_callable=_skip_training,
+    # )
 
     # 5. Feature engineering
     build_features = PythonOperator(
@@ -274,6 +279,8 @@ with DAG(
     #       ↓              ↓
     #        notify_success
     #
-    var = sense_new_data >> load_from_hf >> check_data_changed
-    var_1 = check_data_changed >> make_dataset >> build_features >> train_model >> notify_success
-    var_2 = check_data_changed >> skip_training >> notify_success
+    # var = sense_new_data >> load_from_hf >> check_data_changed
+    # var_1 = check_data_changed >> make_dataset >> build_features >> train_model >> notify_success
+    # var_2 = check_data_changed >> skip_training >> notify_success
+
+    var = sense_new_data >> load_from_hf >> make_dataset >> build_features >> train_model >> notify_success
