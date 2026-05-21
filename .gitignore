@@ -12,3 +12,7 @@ __pycache__/
 # data/processed
 
 mlflow/artifacts
+
+# SSL certificates (generated locally — never commit private keys)
+deployments/nginx/certs/*.key
+deployments/nginx/certs/*.crt

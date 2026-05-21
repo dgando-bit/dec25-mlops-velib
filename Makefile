@@ -19,16 +19,16 @@ RED    := \033[31m
 CYAN   := \033[36m
 
 # Services définis dans le docker-compose
-SERVICES := mlflow-db mlflow-server ml_training jupyter-service api
+SERVICES := mlflow-db mlflow-server ml_training jupyter-service api nginx
 
 .DEFAULT_GOAL := help
 .PHONY: help \
         build build-nocache \
         up down restart \
-        up-infra up-ml up-api up-jupyter \
-        logs logs-api logs-ml logs-mlflow logs-jupyter \
+        up-infra up-ml up-api up-jupyter up-nginx \
+        logs logs-api logs-ml logs-mlflow logs-jupyter logs-nginx \
         ps status \
-        health \
+        health check-nginx \
         test test-api test-mlflow \
         train \
         clean clean-volumes clean-all \
@@ -98,7 +98,17 @@ help:
 	@echo ""
 	@echo "$(BOLD)⚙️  Setup$(RESET)"
 	@echo "  $(GREEN)make check-env$(RESET)        Vérifier que le fichier .env est présent"
-	@echo "  $(GREEN)make setup$(RESET)            Initialiser le projet (env + dossiers)"
+	@echo "  $(GREEN)make setup$(RESET)            Initialiser le projet (env + dossiers + certs SSL auto)"
+	@echo ""
+	@echo "$(BOLD)🔒 Nginx / HTTPS$(RESET)"
+	@echo "  $(GREEN)make up-nginx$(RESET)         Build + démarrer Nginx seul (puis vérifie)"
+	@echo "  $(GREEN)make logs-nginx$(RESET)       Logs Nginx en temps réel"
+	@echo "  $(GREEN)make check-nginx$(RESET)      Tester toutes les routes HTTPS (rapport vert/rouge)"
+	@echo ""
+	@echo "  Accès HTTPS :"
+	@echo "    https://localhost/         → API"
+	@echo "    https://localhost/mlflow/  → MLflow"
+	@echo "    https://localhost/jupyter/ → Jupyter"
 	@echo ""
 
 
@@ -126,7 +136,9 @@ check-env:
 setup: check-env
 	@echo "$(CYAN)→ Création des dossiers nécessaires...$(RESET)"
 	@mkdir -p data/raw data/processed mlflow/artifacts ml/notebooks
+	@mkdir -p deployments/nginx/certs
 	@echo "$(GREEN)✓ Dossiers créés$(RESET)"
+	@echo "$(GREEN)  (Les certificats SSL seront générés automatiquement au premier 'make up')$(RESET)"
 	@echo "$(CYAN)→ Vérification de Docker...$(RESET)"
 	@docker info > /dev/null 2>&1 || (echo "$(RED)✗ Docker n'est pas lancé$(RESET)" && exit 1)
 	@echo "$(GREEN)✓ Docker opérationnel$(RESET)"
@@ -181,6 +193,12 @@ up-jupyter: up-infra
 	@echo "$(CYAN)  URL : http://localhost:8888$(RESET)"
 	@echo "$(CYAN)  Token : $$(grep JUPYTER_TOKEN $(ENV_FILE) | cut -d= -f2)$(RESET)"
 
+up-nginx: check-env
+	@echo "$(CYAN)→ Build et démarrage de Nginx...$(RESET)"
+	$(COMPOSE) -f $(COMPOSE_FILE) up -d --build nginx
+	@sleep 2
+	@$(MAKE) --no-print-directory check-nginx
+
 
 # =============================================================================
 # ARRÊT
@@ -212,6 +230,9 @@ logs-mlflow:
 
 logs-jupyter:
 	$(COMPOSE) -f $(COMPOSE_FILE) logs -f jupyter-service
+
+logs-nginx:
+	$(COMPOSE) -f $(COMPOSE_FILE) logs -f nginx
 
 
 # =============================================================================
@@ -262,6 +283,52 @@ health:
 	else \
 		echo "  $(YELLOW)⚠ Jupyter ne répond pas (normal s'il n'est pas démarré)$(RESET)"; \
 	fi
+	@echo ""
+
+
+check-nginx:
+	@echo ""
+	@echo "$(BOLD)$(CYAN)══ Vérification Nginx ══$(RESET)"
+	@echo ""
+	@echo "$(BOLD)[1/5] Container$(RESET)"
+	@if docker ps --filter "name=dec25-mlops-nginx" --filter "status=running" | grep -q nginx; then \
+		echo "  $(GREEN)✓ dec25-mlops-nginx est démarré$(RESET)"; \
+	else \
+		echo "  $(RED)✗ Container non démarré — lance : make up-nginx$(RESET)"; \
+		exit 1; \
+	fi
+	@echo "$(BOLD)[2/5] HTTP → HTTPS redirect (port 80)$(RESET)"
+	@code=$$(curl -s -o /dev/null -w "%{http_code}" http://localhost); \
+	if [ "$$code" = "301" ]; then \
+		echo "  $(GREEN)✓ 301 Redirect$(RESET)"; \
+	else \
+		echo "  $(RED)✗ Code inattendu : $$code$(RESET)"; \
+	fi
+	@echo "$(BOLD)[3/5] HTTPS → API (/)$(RESET)"
+	@code=$$(curl -sk -o /dev/null -w "%{http_code}" https://localhost/); \
+	if [ "$$code" = "200" ]; then \
+		echo "  $(GREEN)✓ 200 OK$(RESET)"; \
+	else \
+		echo "  $(RED)✗ Code inattendu : $$code (API démarrée ?)$(RESET)"; \
+	fi
+	@echo "$(BOLD)[4/5] HTTPS → MLflow (/mlflow/)$(RESET)"
+	@code=$$(curl -sk -o /dev/null -w "%{http_code}" https://localhost/mlflow/); \
+	if [ "$$code" = "200" ]; then \
+		echo "  $(GREEN)✓ 200 OK$(RESET)"; \
+	else \
+		echo "  $(RED)✗ Code inattendu : $$code (MLflow démarré ?)$(RESET)"; \
+	fi
+	@echo "$(BOLD)[5/5] HTTPS → Jupyter (/jupyter/)$(RESET)"
+	@code=$$(curl -skL -o /dev/null -w "%{http_code}" https://localhost/jupyter/); \
+	if [ "$$code" = "200" ]; then \
+		echo "  $(GREEN)✓ 200 OK$(RESET)"; \
+	else \
+		echo "  $(RED)✗ Code inattendu : $$code (Jupyter démarré ?)$(RESET)"; \
+	fi
+	@echo ""
+	@echo "  $(CYAN)https://localhost/         → API$(RESET)"
+	@echo "  $(CYAN)https://localhost/mlflow/  → MLflow$(RESET)"
+	@echo "  $(CYAN)https://localhost/jupyter/ → Jupyter$(RESET)"
 	@echo ""
 
 
