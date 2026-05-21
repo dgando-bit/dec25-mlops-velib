@@ -85,7 +85,7 @@ services:
 
   airflow-worker:
     <<: *airflow-common
-    command: celery worker
+    command: celery worker -H worker@airflow-worker
     restart: always
 
   airflow-init:
