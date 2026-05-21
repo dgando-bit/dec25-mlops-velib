@@ -1,46 +1,17 @@
 """
 ml.src.features.build_features — Pipeline de feature engineering Vélib'.
 
-Lit le parquet nettoyé produit par ``make_dataset`` et applique 9 étapes
-de feature engineering pour produire les datasets train/test prêts à
-l'entraînement.
-
-Ordre des étapes (préserve la prévention des fuites) :
-
-    1. Chargement du parquet nettoyé
-    2. Features temporelles      (hour, dow, month, sin/cos, flags)
-    3. Profil de taille           (capacity_group)
-    4. Features météo             (severity, is_frozen, is_stormy)
-    5. Encodage booléens cal.     (is_holiday, is_vacation → int)
-    6. Lags temporels             (lag_60min, lag_240min via merge_asof)
-    7. Split temporel             (quantile 1 - test_size)
-    8. Post-split features        (morning_evening_ratio, temp_anomalie)
-    9. station_trend_avg          (sur train, fallback 2 niveaux)
-   10. Cible résiduelle           (residual_target, lag_res_240min)
-   11. Export parquet train/test/stations_geo
-
-Pipeline DVC :
-    Stage  : build_features
-    Entrée : data/interim/velib_cleaned_latest.parquet
-    Sorties :
-        - data/processed/train_preprocessed.parquet
-        - data/processed/test_preprocessed.parquet
-        - data/processed/stations_geo.parquet
-
-Usage :
-    # En CLI
-    python -m ml.src.features.build_features
-
-    # En import depuis un autre module
-    from ml.src.features.build_features import build_features
-    train, test, stations_geo = build_features()
+Optimisé mémoire : libération explicite entre chaque étape + types compacts.
 """
 from __future__ import annotations
 
+import gc
 import hashlib
+import json
 import sys
 from datetime import datetime, timezone
 
+import numpy as np
 import pandas as pd
 
 from shared.config import settings
@@ -64,7 +35,43 @@ logger = get_logger(__name__)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# CONSIGNATION DES FEATURES (log humain miroir de .cleaning.log)
+# OPTIMISATION MÉMOIRE
+# ─────────────────────────────────────────────────────────────────────────────
+def _optimize_dtypes(df: pd.DataFrame) -> pd.DataFrame:
+    """Réduit l'empreinte mémoire en choisissant les types les plus compacts.
+
+    - float64 → float32 pour les features continues (précision suffisante)
+    - int64   → int8/int16 selon la plage de valeurs
+    - object  → category si peu de valeurs distinctes
+    """
+    out = df.copy()
+
+    for col in out.select_dtypes(include="float64").columns:
+        # Garde float64 uniquement pour datetime et les cibles
+        if col not in ("taux", TARGET_RAW, TARGET_RESIDUAL, "station_trend_avg",
+                       "lag_60min", "lag_240min", "lag_res_240min"):
+            out[col] = out[col].astype("float32")
+
+    for col in out.select_dtypes(include="int64").columns:
+        col_min, col_max = out[col].min(), out[col].max()
+        if col_min >= -128 and col_max <= 127:
+            out[col] = out[col].astype("int8")
+        elif col_min >= -32768 and col_max <= 32767:
+            out[col] = out[col].astype("int16")
+        else:
+            out[col] = out[col].astype("int32")
+
+    return out
+
+
+def _log_memory(df: pd.DataFrame, label: str) -> None:
+    """Loggue l'empreinte mémoire du DataFrame."""
+    mb = df.memory_usage(deep=True).sum() / 1e6
+    logger.info(f"Mémoire [{label}]", extra={"mb": round(mb, 1), "rows": len(df)})
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CONSIGNATION
 # ─────────────────────────────────────────────────────────────────────────────
 def _append_features_log(
     rows_in: int,
@@ -75,11 +82,9 @@ def _append_features_log(
     test_path,
     station_trend_mode: str,
 ) -> None:
-    """Append une ligne dans data/processed/.features.log."""
     log_path = settings.processed_data_dir / ".features.log"
     log_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Hash du fichier train (clé d'identification du dataset)
     h = hashlib.sha256()
     with train_path.open("rb") as f:
         for chunk in iter(lambda: f.read(1 << 20), b""):
@@ -88,12 +93,8 @@ def _append_features_log(
 
     line = ",".join([
         datetime.now(tz=timezone.utc).isoformat(timespec="seconds"),
-        str(rows_in),
-        str(train_rows),
-        str(test_rows),
-        str(n_features),
-        station_trend_mode,
-        sha_short,
+        str(rows_in), str(train_rows), str(test_rows),
+        str(n_features), station_trend_mode, sha_short,
         f"{train_path.stat().st_size / 1e6:.1f}MB",
         f"{test_path.stat().st_size / 1e6:.1f}MB",
     ])
@@ -107,19 +108,10 @@ def _append_features_log(
             )
         f.write(line + "\n")
 
-    logger.info(
-        "Features log mis à jour",
-        extra={"log_path": str(log_path), "sha": sha_short, "mode": station_trend_mode},
-    )
+    logger.info("Features log mis à jour", extra={"sha": sha_short})
 
 
 def _save_metadata(station_trend_mode: str, n_features: int) -> None:
-    """Sauve les métadonnées du build pour que train_model.py puisse les lire.
-
-    Notamment, le mode station_trend_avg utilisé sera tagué dans le run MLflow
-    pour comparer plus tard les runs de modes différents.
-    """
-    import json
     metadata = {
         "station_trend_mode": station_trend_mode,
         "n_features": n_features,
@@ -136,22 +128,9 @@ def _save_metadata(station_trend_mode: str, n_features: int) -> None:
 def build_features(
     write_to_disk: bool = True,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """Lit le parquet nettoyé, exécute les 9 étapes de FE, écrit train/test.
-
-    Args:
-        write_to_disk: si True (défaut), écrit les 3 parquets dans
-            ``settings.processed_data_dir`` et appende dans ``.features.log``.
-
-    Returns:
-        Tuple (train, test, stations_geo) — DataFrames prêts à l'entraînement.
-
-    Raises:
-        FileNotFoundError: si le parquet nettoyé n'existe pas
-            (lancer ``make_dataset`` au préalable).
-    """
+    """Feature engineering optimisé mémoire avec libération explicite entre étapes."""
     settings.ensure_directories()
 
-    # ── Chargement du parquet nettoyé ─────────────────────────────────────
     cleaned_path = settings.interim_path
     if not cleaned_path.exists():
         raise FileNotFoundError(
@@ -160,70 +139,102 @@ def build_features(
         )
 
     logger.info("Démarrage build_features", extra={"input_path": str(cleaned_path)})
+
+    # ── Étape 1 : chargement avec colonnes sélectionnées ──────────────────
+    # On ne charge que les colonnes nécessaires au FE
+    needed_cols = [
+        "station_id", "name", "lat", "lon", "capacity",
+        "datetime", "taux",
+        "apparent_temperature", "weather_code",
+        "is_holiday", "is_vacation",
+        # colonnes DuckDB ajoutées par make_dataset
+        "is_renting_bool", "total_capacity_calc",
+    ]
+    # Lire toutes les colonnes disponibles (certaines peuvent manquer)
     df = pd.read_parquet(cleaned_path)
+    available = [c for c in needed_cols if c in df.columns]
+    df = df[available].copy()
+
     rows_in = len(df)
-    logger.info(
-        "Parquet nettoyé chargé",
-        extra={
-            "rows": rows_in,
-            "stations": int(df["station_id"].nunique()),
-            "columns": len(df.columns),
-        },
-    )
+    logger.info("Parquet nettoyé chargé", extra={
+        "rows": rows_in,
+        "stations": int(df["station_id"].nunique()),
+        "columns": len(df.columns),
+    })
+
+    # Normaliser datetime immédiatement
+    df["datetime"] = pd.to_datetime(df["datetime"], utc=True).dt.as_unit("ns")
+
+    # Extraire stations_geo avant toute transformation (colonnes minimales)
+    stations_geo = extract_stations_geo(df)
+    logger.info("Table stations_geo extraite", extra={"stations": len(stations_geo)})
 
     # ── Étape 2 : features temporelles ────────────────────────────────────
     df = add_temporal_features(df)
-    logger.info("Features temporelles ajoutées", extra={"new_cols": 10})
+    df = _optimize_dtypes(df)
+    gc.collect()
+    _log_memory(df, "après temporal_features")
+    logger.info("Features temporelles ajoutées")
 
     # ── Étape 3 : profil de taille ────────────────────────────────────────
     df = add_capacity_group(df)
+    gc.collect()
     logger.info("capacity_group ajoutée")
 
     # ── Étape 4 : features météo ──────────────────────────────────────────
     df = add_weather_features(df)
-    logger.info("Features météo ajoutées",
-                extra={"new_cols": "weather_severity,is_frozen,is_stormy"})
+    df = _optimize_dtypes(df)
+    gc.collect()
+    logger.info("Features météo ajoutées")
 
-    # ── Étape 5 : encodage booléens calendaires ───────────────────────────
+    # ── Étape 5 : encodage booléens ───────────────────────────────────────
     df = encode_calendar_booleans(df)
-    logger.info("Booléens calendaires encodés en int8")
+    gc.collect()
+    logger.info("Booléens calendaires encodés")
 
-    # ── Étape 6 : lags temporels (merge_asof) ─────────────────────────────
+    # ── Étape 6 : lags temporels ──────────────────────────────────────────
+    # C'est l'étape la plus lourde — on libère tout ce qu'on peut avant
+    df = _optimize_dtypes(df)
+    gc.collect()
+    _log_memory(df, "avant lags")
+
     df = add_temporal_lags(df, lag_minutes=(60, 240))
+    gc.collect()
+    _log_memory(df, "après lags")
 
     # ── Étape 7 : split temporel ──────────────────────────────────────────
     train, test = temporal_split(df, test_size=settings.test_size)
+    del df  # libère immédiatement le DataFrame complet
+    gc.collect()
+    _log_memory(train, "train après split")
+    _log_memory(test, "test après split")
 
     # ── Étape 8 : post-split features (anti-fuite) ────────────────────────
     train, test = add_post_split_features(train, test)
+    gc.collect()
 
     # ── Étape 9 : station_trend_avg (anti-fuite, cascade adaptative) ──────
     train, test, station_trend_mode = add_station_trend_avg(train, test, min_obs=3)
+    gc.collect()
 
-    # ── Étape 10 : cible résiduelle + lag résiduel ────────────────────────
+    # ── Étape 10 : cible résiduelle ───────────────────────────────────────
     train, test = add_residual_target(train, test)
+    gc.collect()
 
-    # ── Table stations_geo (pour Streamlit / API) ─────────────────────────
-    stations_geo = extract_stations_geo(df)
-    logger.info(
-        "Table stations_geo extraite",
-        extra={"stations": len(stations_geo)},
-    )
+    # Optimisation finale des types
+    train = _optimize_dtypes(train)
+    test = _optimize_dtypes(test)
 
-    # ── Bilan global ──────────────────────────────────────────────────────
     n_features = len(train.columns)
-    logger.info(
-        "Feature engineering terminé",
-        extra={
-            "rows_in": rows_in,
-            "train_rows": len(train),
-            "test_rows": len(test),
-            "stations_in_geo": len(stations_geo),
-            "n_features": n_features,
-            "target_raw_sigma": round(float(train[TARGET_RAW].std()), 2),
-            "target_residual_sigma": round(float(train[TARGET_RESIDUAL].std()), 2),
-        },
-    )
+    logger.info("Feature engineering terminé", extra={
+        "rows_in": rows_in,
+        "train_rows": len(train),
+        "test_rows": len(test),
+        "n_features": n_features,
+        "target_raw_sigma": round(float(train[TARGET_RAW].std()), 2),
+        "target_residual_sigma": round(float(train[TARGET_RESIDUAL].std()), 2),
+        "station_trend_mode": station_trend_mode,
+    })
 
     # ── Écriture ──────────────────────────────────────────────────────────
     if write_to_disk:
@@ -234,23 +245,16 @@ def build_features(
         test_path = settings.test_path
         stations_geo_path = out_dir / "stations_geo.parquet"
 
-        # Compression zstd cohérente avec le reste du pipeline
         train.to_parquet(train_path, engine="pyarrow", compression="zstd", index=False)
         test.to_parquet(test_path, engine="pyarrow", compression="zstd", index=False)
         stations_geo.to_parquet(
             stations_geo_path, engine="pyarrow", compression="zstd", index=False
         )
 
-        logger.info(
-            "Parquets écrits",
-            extra={
-                "train_path": str(train_path),
-                "train_size_mb": round(train_path.stat().st_size / 1e6, 1),
-                "test_path": str(test_path),
-                "test_size_mb": round(test_path.stat().st_size / 1e6, 1),
-                "stations_geo_path": str(stations_geo_path),
-            },
-        )
+        logger.info("Parquets écrits", extra={
+            "train_size_mb": round(train_path.stat().st_size / 1e6, 1),
+            "test_size_mb": round(test_path.stat().st_size / 1e6, 1),
+        })
 
         _append_features_log(
             rows_in=rows_in,
@@ -270,7 +274,6 @@ def build_features(
 # CLI
 # ─────────────────────────────────────────────────────────────────────────────
 def main() -> int:
-    """Point d'entrée CLI. Retourne le code de sortie pour le shell."""
     try:
         build_features(write_to_disk=True)
         return 0
@@ -278,9 +281,7 @@ def main() -> int:
         logger.error("Parquet nettoyé absent", extra={"error": str(e)})
         return 2
     except Exception as e:  # noqa: BLE001
-        logger.exception(
-            "Échec build_features", extra={"error_type": type(e).__name__}
-        )
+        logger.exception("Échec build_features", extra={"error_type": type(e).__name__})
         return 1
 
 

@@ -1,8 +1,8 @@
 {
-  "timestamp": "2026-05-21T07:05:03.502913+00:00",
+  "timestamp": "2026-05-21T08:07:12.746690+00:00",
   "n_features": 24,
-  "n_drifted": 10,
-  "drift_share": 0.4167,
+  "n_drifted": 9,
+  "drift_share": 0.375,
   "dataset_drift": false,
   "drift_alert": true
 }
