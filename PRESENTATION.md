@@ -246,7 +246,7 @@ Tests fonctionnels en temps réel, organisés par onglet :
 | Nginx | Test 404 (route inexistante → page personnalisée), test 429 (25 requêtes en rafale → rate limit) |
 | Tests pytest | Boutons pour lancer `pytest api/tests/` (27 tests) et `pytest ml/tests/ shared/tests/` (56 tests) via `docker compose run` — résultats affichés en temps réel |
 
-#### Page 3 — Prédiction MVP
+#### Page 3 — Prédiction
 Démonstration du cas d'usage métier :
 1. Sélection d'une station parmi 15 stations parisiennes représentatives
 2. Définition du contexte : heure (actuelle ou manuelle), jour de la semaine, température ressentie, anomalie thermique, sévérité météo, occupation récente (lags 60 min / 240 min), jours fériés / vacances

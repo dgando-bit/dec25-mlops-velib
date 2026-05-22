@@ -4,6 +4,10 @@
 *.pem
 *.key
 
+# ─── Certificats SSL Nginx (générés au runtime, ne pas commiter) ─────────────
+deployments/nginx/certs/*.key
+deployments/nginx/certs/*.crt
+
 # ─── Données (versionnées par DVC, pas par Git) ──────────────────────────────
 data/raw/*.parquet
 data/raw/*.csv

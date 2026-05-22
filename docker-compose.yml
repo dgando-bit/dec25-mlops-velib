@@ -322,7 +322,7 @@ services:
     volumes:
       - ./deployments/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./deployments/nginx/errors:/etc/nginx/errors:ro
-      - ./deployments/nginx/certs:/etc/nginx/certs:ro
+      - ./deployments/nginx/certs:/etc/nginx/certs
       - ./deployments/nginx/.htpasswd:/etc/nginx/.htpasswd:ro
     depends_on:
       - api

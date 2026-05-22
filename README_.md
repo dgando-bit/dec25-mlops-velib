@@ -744,7 +744,20 @@ Tu n'es **pas** dans WSL. Vérifie l'invite : si elle commence par `PS C:\` ou `
 
 ---
 
-## Pages d'erreur Nginx personnalisées
+## Nginx — Configuration avancée
+
+### Image et SSL automatique
+
+- Image épinglée : `nginx:1.27-alpine` (au lieu de `latest`)
+- `entrypoint.sh` génère automatiquement un certificat SSL auto-signé au démarrage si `certs/server.crt` et `certs/server.key` sont absents (OpenSSL, valide 365 jours, CN=localhost)
+- Les certificats générés sont ignorés par Git (`deployments/nginx/certs/*.key`, `*.crt`)
+
+### DNS resolver Docker (résolution lazy)
+
+`resolver 127.0.0.11 ipv6=off valid=10s;` avec `set $upstream <service>:<port>` sur chaque bloc.  
+Avantage : la résolution DNS se fait à la requête et non au démarrage — Nginx n'échoue plus au lancement si un backend est temporairement absent, et un `nginx -s reload` n'est plus nécessaire après restart d'un service.
+
+### Pages d'erreur personnalisées
 
 Trois pages HTML brandées Vélib' MLOps sont servies par Nginx en cas d'erreur :
 
@@ -756,10 +769,13 @@ Trois pages HTML brandées Vélib' MLOps sont servies par Nginx en cas d'erreur 
 
 ### Configuration
 
-- `limit_req_status 429` — nginx retourne 429 (au lieu de 503) en cas de rate limiting
-- `proxy_intercept_errors on` — nginx intercepte les erreurs upstream sur le bloc API (port 80)
-- Les fichiers sont montés en lecture seule : `./deployments/nginx/errors:/etc/nginx/errors:ro`
-- `location ^~ /errors/ { root /etc/nginx; internal; }` — bloc interne, non accessible directement depuis le client
+- `worker_processes auto` — adapte le nombre de workers au nombre de CPUs disponibles
+- `server_tokens off` — masque la version Nginx dans les headers de réponse
+- `client_max_body_size 100M` — accepte les payloads jusqu'à 100 Mo
+- `limit_req_status 429` — retourne 429 (au lieu de 503) en cas de rate limiting
+- `proxy_intercept_errors on` — intercepte les erreurs upstream sur le bloc API (port 80)
+- `proxy_read_timeout 300s` sur MLflow — nécessaire pour les longues requêtes d'artefacts
+- Les erreurs sont montées en lecture seule : `./deployments/nginx/errors:/etc/nginx/errors:ro`
 
 ---
 
