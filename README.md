@@ -13,12 +13,15 @@ L'architecture est pensée comme un mini-système MLOps end-to-end avec une cont
 
 ## Stack
 
-| Service | Rôle | Port |
-|---|---|---|
-| PostgreSQL | Base de données MLflow | — |
-| MLflow | Tracking des expériences ML | `5001` |
-| API FastAPI | Endpoints d'inférence | `8000` |
-| Jupyter | Notebooks d'exploration | `8888` |
+| Service     | Rôle                        | Port   |
+|-------------|-----------------------------|--------|
+| PostgreSQL  | Base de données MLflow      | —      |
+| MLflow      | Tracking des expériences ML | `5000` |
+| API FastAPI | Endpoints d'inférence       | `8080` |
+| Jupyter     | Notebooks d'exploration     | `8888` |
+| Airflow     | Orchestration DAG           | `8090` |
+| Prometheus  | Monitoring                  | `9090` |
+| Grafana     | Monitoring                  | `3000` |
 
 ---
 
