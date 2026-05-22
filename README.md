@@ -282,7 +282,7 @@ make clean-volumes
 
 ---
 
-# Contexte et dépendances
+# Démarrage détaillé, Contexte et dépendances
 
 ## Rappel des prérequis
 
