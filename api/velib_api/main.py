@@ -35,7 +35,7 @@ from prometheus_fastapi_instrumentator import Instrumentator
 from sklearn.pipeline import Pipeline
 
 from shared.logger import get_logger
-from api.velib_api.inference import FEATURES_FINAL, predict_with_confidence
+from api.velib_api.inference import FEATURES_FINAL, predict_with_confidence, load_model_by_alias
 from api.velib_api import __version__
 from api.velib_api.dependencies import get_model, preload_model
 from api.velib_api.schemas import (

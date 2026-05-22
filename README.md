@@ -110,7 +110,17 @@ make help
 ├── docker-compose.yml
 ├── api/                          # API FastAPI (inférence)
 │   ├── Dockerfile
-│   ├── main.py
+│   ├── requirements.txt
+│   └── velib_api/
+│       ├── dependencies.py
+│       ├── main.py
+│       ├── schemas.py
+│       └── nference.py
+├── airflow//                          
+│   ├── Dockerfile
+│   ├── dags/
+│   ├── mlogs/
+│   ├── plugins/
 │   └── requirements.txt
 ├── ml/                           # Module ML
 │   ├── Dockerfile
@@ -138,15 +148,13 @@ make help
 │           └── helpers.py
 ├── data/                         # Données versionnées par DVC
 │   ├── raw/                      # Données brutes (ignoré par Git)
-│   │   └── dataset_velib_300326.csv
-│   ├── raw.dvc                   # Métadonnées DVC (suivi par Git)
-│   ├── processed/                # Données transformées (ignoré par Git)
-│   │   ├── train_preprocessed.csv
-│   │   └── test_preprocessed.csv
-│   └── processed.dvc             # Métadonnées DVC (suivi par Git)
-└── deployments/                  # Configuration infrastructure
-    ├── nginx/
-    └── prometheus/
+│   ├── interim/
+│   ├── outputs/
+│   └── processed/                # Données transformées (ignoré par Git)
+└── deployments
+    ├── grafana
+    ├── nginx
+    └── prometheus
         └── prometheus.yml
 ```
 

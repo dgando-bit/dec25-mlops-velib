@@ -1,65 +1,72 @@
+"""
+airflow/dags/velib_pipeline.py — Pipeline ML Vélib orchestré par Airflow.
+"""
 from __future__ import annotations
 
-import hashlib
 import logging
 import os
-import sys
 import subprocess
+import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
 from airflow import DAG
-from airflow.operators.email import EmailOperator
 from airflow.operators.python import BranchPythonOperator, PythonOperator
 from airflow.sensors.python import PythonSensor
+from airflow.utils.task_group import TaskGroup
+from airflow.utils.trigger_rule import TriggerRule
 
 log = logging.getLogger(__name__)
 
-# ─────────────────────────────────────────────────────────────────────────────
-# CONFIGURATION
-# ─────────────────────────────────────────────────────────────────────────────
 SNAPSHOT_LOG = Path("/app/data/raw/.snapshots.log")
 HASH_STATE_FILE = Path("/app/data/raw/.last_dag_hash")
+ALERT_EMAIL = os.getenv("AIRFLOW_ALERT_EMAIL", "mlops@example.com")
 
 DEFAULT_ARGS = {
     "owner": "mlops",
-    "retries": 0,                        # pas de retry — on alerte immédiatement
+    "retries": 0,
     "retry_delay": timedelta(minutes=5),
-    "email": [os.getenv("AIRFLOW_ALERT_EMAIL", "mlops@yopmail.com")],
+    "email": [ALERT_EMAIL],
     "email_on_failure": False,
     "email_on_retry": False,
 }
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# CALLBACKS
-# ─────────────────────────────────────────────────────────────────────────────
 def on_failure_callback(context: dict) -> None:
-    """Loggue l'échec — l'email est géré par email_on_failure=True."""
     task_id = context["task_instance"].task_id
     dag_id = context["dag"].dag_id
     log.error("Échec du pipeline — dag=%s task=%s", dag_id, task_id)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# FONCTIONS DES TÂCHES
-# ─────────────────────────────────────────────────────────────────────────────
+def _run(module: str, env_extra: dict | None = None) -> None:
+    """Lance un module Python en subprocess et lève une exception si échec."""
+    env = {**os.environ, **(env_extra or {})}
+    result = subprocess.run(
+        [sys.executable, "-m", module],
+        cwd="/app",
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    if result.stdout:
+        log.info(result.stdout)
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"{module} échoué (code {result.returncode}):\n"
+            f"STDOUT:\n{result.stdout}\n"
+            f"STDERR:\n{result.stderr}"
+        )
+
+
 def _sense_new_hf_file() -> bool:
-    """Vérifie si un nouveau fichier est disponible sur HuggingFace.
-
-    Stratégie : liste les fichiers du repo HF et compare avec l'état
-    sauvegardé lors du dernier run. Retourne True si un nouveau fichier
-    est détecté (ce qui débloque le sensor).
-    """
     try:
-        from huggingface_hub import list_repo_files
-        from shared.config import settings
-
-        # Mode dev : bypass le sensor
         from airflow.models import Variable
         if Variable.get("dev_mode", default_var="false") == "true":
             log.info("Mode dev — sensor bypassed")
             return True
+
+        from huggingface_hub import list_repo_files
+        from shared.config import settings
 
         files = sorted(
             f for f in list_repo_files(
@@ -93,95 +100,115 @@ def _sense_new_hf_file() -> bool:
 
 
 def _load_from_hf() -> None:
-    """Télécharge les données depuis HuggingFace."""
-    result = subprocess.run(
-        [sys.executable, "-m", "ml.src.data.load_from_hf"],
-        cwd="/app",
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        raise RuntimeError(f"load_from_hf échoué :\n{result.stderr}")
-    log.info(result.stdout)
+    _run("ml.src.data.load_from_hf")
 
 
 def _check_data_changed(**context) -> str:
-    """Compare le hash SHA256 du dernier snapshot avec le run précédent.
+    """Retourne 'ml_pipeline.make_dataset' ou 'skip_training'."""
+    from airflow.models import Variable
+    if Variable.get("force_training", default_var="false") == "true":
+        log.info("Mode force training — _check_data_changed bypassed")
+        return "ml_pipeline.make_dataset"
 
-    Retourne l'id de la tâche suivante :
-        - 'make_dataset'  si les données ont changé → pipeline complet
-        - 'skip_training' si les données n'ont pas changé → arrêt propre
-    """
     if not SNAPSHOT_LOG.exists():
         log.warning("Snapshot log absent — on continue le pipeline")
-        return "make_dataset"
+        return "ml_pipeline.make_dataset"
 
     lines = [l for l in SNAPSHOT_LOG.read_text().splitlines() if not l.startswith("#")]
     if not lines:
-        return "make_dataset"
+        return "ml_pipeline.make_dataset"
 
-    # Dernière ligne du log : timestamp,rows,stations,date_min,date_max,sha256_short,size
     last_sha = lines[-1].split(",")[5]
 
     if not HASH_STATE_FILE.exists():
         HASH_STATE_FILE.write_text(last_sha)
         log.info("Premier hash enregistré : %s — pipeline complet", last_sha)
-        return "make_dataset"
+        return "ml_pipeline.make_dataset"
 
     previous_sha = HASH_STATE_FILE.read_text().strip()
 
     if last_sha == previous_sha:
-        log.info("Données inchangées (sha=%s) — skip entraînement", last_sha)
+        log.info("Données inchangées (sha=%s) — skip", last_sha)
         return "skip_training"
 
     HASH_STATE_FILE.write_text(last_sha)
-    log.info("Données changées : %s → %s — pipeline complet", previous_sha, last_sha)
-    return "make_dataset"
+    log.info("Données changées : %s → %s", previous_sha, last_sha)
+    return "ml_pipeline.make_dataset"
 
 
 def _make_dataset() -> None:
-    """Nettoie les données brutes → interim."""
-    result = subprocess.run(
-        [sys.executable, "-m", "ml.src.data.make_dataset"],
-        cwd="/app",
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        raise RuntimeError(f"make_dataset échoué :\n{result.stderr}")
-    log.info(result.stdout)
+    _run("ml.src.data.make_dataset")
 
 
 def _build_features() -> None:
-    """Feature engineering → train/test parquet."""
-    result = subprocess.run(
-        [sys.executable, "-m", "ml.src.features.build_features"],
-        cwd="/app",
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        raise RuntimeError(f"build_features échoué :\n{result.stderr}")
-    log.info(result.stdout)
+    _run("ml.src.features.build_features")
 
 
 def _train_model() -> None:
-    """Entraîne le modèle et le logue dans MLflow."""
-    result = subprocess.run(
-        [sys.executable, "-m", "ml.src.models.train_model"],
-        cwd="/app",
-        capture_output=True,
-        text=True,
-        env={**os.environ, "MLFLOW_TRACKING_URI": os.getenv("MLFLOW_TRACKING_URI", "http://mlflow-server:5000")},
+    _run(
+        "ml.src.models.train_model",
+        env_extra={"MLFLOW_TRACKING_URI": os.getenv(
+            "MLFLOW_TRACKING_URI", "http://mlflow-server:5000"
+        )},
     )
-    if result.returncode != 0:
-        raise RuntimeError(f"train_model échoué :\n{result.stderr}")
-    log.info(result.stdout)
 
 
 def _skip_training() -> None:
-    """Tâche no-op — données inchangées, entraînement skippé."""
     log.info("Données inchangées — entraînement skippé.")
+
+
+def _notify(**context) -> None:
+    """Email adaptatif : succès / skip / échec."""
+    from airflow.utils.email import send_email
+
+    dag_run = context["dag_run"]
+    run_id = dag_run.run_id
+    ds = context["ds"]
+
+    task_instances = dag_run.get_task_instances()
+    failed = [t for t in task_instances if t.state == "failed"]
+    skipped = any(
+        t.task_id == "skip_training" and t.state == "success"
+        for t in task_instances
+    )
+
+    if failed:
+        tasks_html = "".join(
+            f"<li><code>{t.task_id}</code> — {t.state}</li>" for t in failed
+        )
+        subject = f"❌ Pipeline Vélib — Échec ({ds})"
+        body = f"""
+            <h2 style="color:#C62828">❌ ÉCHEC — Pipeline Vélib</h2>
+            <p>Le pipeline a échoué sur les tâches suivantes :</p>
+            <ul>{tasks_html}</ul>
+            <p><b>Run ID :</b> {run_id}</p>
+            <p><b>Date :</b> {ds}</p>
+            <p>Consulter les logs dans Airflow pour le détail.</p>
+        """
+
+    elif skipped:
+        subject = f"⏭️ Pipeline Vélib — Skip ({ds})"
+        body = f"""
+            <h2 style="color:#F57C00">⏭️ SKIPPÉ — Pipeline Vélib</h2>
+            <p>Aucune nouvelle donnée détectée sur HuggingFace.</p>
+            <p>Le réentraînement a été skippé — le modèle en production reste inchangé.</p>
+            <p><b>Run ID :</b> {run_id}</p>
+            <p><b>Date :</b> {ds}</p>
+        """
+
+    else:
+        subject = f"✅ Pipeline Vélib — Succès ({ds})"
+        body = f"""
+            <h2 style="color:#2E7D32">✅ SUCCÈS — Pipeline Vélib</h2>
+            <p>Le modèle a été réentraîné et enregistré dans MLflow
+            avec l'alias <b>staging</b>.</p>
+            <p><b>Run ID :</b> {run_id}</p>
+            <p><b>Date :</b> {ds}</p>
+            <p>Consulter MLflow pour valider et promouvoir en production.</p>
+        """
+
+    send_email(to=ALERT_EMAIL, subject=subject, html_content=body)
+    log.info("Email envoyé — subject=%s", subject)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -192,112 +219,92 @@ with DAG(
     description="Pipeline ML Vélib — détection HF → load → clean → features → train",
     default_args=DEFAULT_ARGS,
     start_date=datetime(2026, 1, 1),
-    schedule=timedelta(hours=6),  # poll toutes les 6h
+    schedule=timedelta(hours=6),
     catchup=False,
-    max_active_runs=1,                     # pas de runs parallèles
+    max_active_runs=1,
     tags=["velib", "ml", "production"],
     on_failure_callback=on_failure_callback,
 ) as dag:
 
-    # 1. Sensor HuggingFace
     sense_new_data = PythonSensor(
         task_id="sense_new_data",
         python_callable=_sense_new_hf_file,
-        poke_interval=60 * 30,   # vérifie toutes les 30 min
-        timeout=60 * 60 * 5,     # timeout après 5h
-        mode="reschedule",       # libère le worker entre les pokes
+        poke_interval=60 * 30,
+        timeout=60 * 60 * 5,
+        mode="reschedule",
         soft_fail=False,
     )
 
-    # 2. Téléchargement HuggingFace
     load_from_hf = PythonOperator(
         task_id="load_from_hf",
         python_callable=_load_from_hf,
-        execution_timeout=timedelta(hours=1),  # ← ajouté
+        execution_timeout=timedelta(hours=1),
         on_failure_callback=on_failure_callback,
     )
-    # 3. Vérification du hash
+
     check_data_changed = BranchPythonOperator(
         task_id="check_data_changed",
         python_callable=_check_data_changed,
     )
 
-    # 4a. Nettoyage des données
-    make_dataset = PythonOperator(
-        task_id="make_dataset",
-        python_callable=_make_dataset,
-        on_failure_callback=on_failure_callback,
-    )
+    # ── Groupe ML ────────────────────────────────────────────────────────
+    with TaskGroup(
+        group_id="ml_pipeline",
+        tooltip="Nettoyage → Feature Engineering → Entraînement",
+    ) as ml_group:
 
-    # 4b. Skip si données inchangées
+        make_dataset = PythonOperator(
+            task_id="make_dataset",
+            python_callable=_make_dataset,
+            execution_timeout=timedelta(minutes=30),
+            on_failure_callback=on_failure_callback,
+        )
+
+        build_features = PythonOperator(
+            task_id="build_features",
+            python_callable=_build_features,
+            execution_timeout=timedelta(hours=1),
+            on_failure_callback=on_failure_callback,
+        )
+
+        train_model = PythonOperator(
+            task_id="train_model",
+            python_callable=_train_model,
+            execution_timeout=timedelta(hours=2),
+            on_failure_callback=on_failure_callback,
+        )
+
+        make_dataset >> build_features >> train_model
+
     skip_training = PythonOperator(
         task_id="skip_training",
         python_callable=_skip_training,
     )
 
-    # 5. Feature engineering
-    build_features = PythonOperator(
-        task_id="build_features",
-        python_callable=_build_features,
-        on_failure_callback=on_failure_callback,
+    # ALL_DONE : s'exécute quoi qu'il arrive (succès, skip, échec)
+    notify = PythonOperator(
+        task_id="notify",
+        python_callable=_notify,
+        trigger_rule=TriggerRule.ALL_DONE,
     )
 
-    # 6. Entraînement
-    train_model = PythonOperator(
-        task_id="train_model",
-        python_callable=_train_model,
-        on_failure_callback=on_failure_callback,
-    )
-
-    # 7. Notification succès
-    notify_success = EmailOperator(
-        task_id="notify_success",
-        to=os.getenv("AIRFLOW_ALERT_EMAIL", "mlops@example.com"),
-        subject="✅ Pipeline Vélib — Entraînement terminé",
-        html_content="""
-            <h3>Pipeline Vélib terminé avec succès</h3>
-            <p>Le modèle a été réentraîné et enregistré dans MLflow.</p>
-            <p><b>DAG :</b> velib_ml_pipeline</p>
-            <p><b>Date :</b> {{ ds }}</p>
-        """,
-        trigger_rule="none_failed_min_one_success",
-    )
-
-    notify_skipped = EmailOperator(
-        task_id="notify_skipped",
-        to=os.getenv("AIRFLOW_ALERT_EMAIL", "mlops@example.com"),
-        subject="ℹ️ Pipeline Vélib — Données inchangées",
-        html_content="""
-        <h2>Pipeline Vélib ignoré</h2>
-
-        <p>
-            Aucune nouvelle donnée détectée.
-        </p>
-
-        <p>
-            L'entraînement du modèle a été skippé.
-        </p>
-
-        <p><b>DAG :</b> velib_ml_pipeline</p>
-        <p><b>Date :</b> {{ ds }}</p>
-        """,
-    )
-    # ─── Dépendances ──────────────────────────────────────────────────────────
+    # ── Dépendances ──────────────────────────────────────────────────────
     #
     #  sense_new_data
     #       ↓
     #  load_from_hf
     #       ↓
     #  check_data_changed
-    #       ↓              ↓
-    #  make_dataset    skip_training
-    #       ↓              ↓
-    #  build_features      |
-    #       ↓              |
-    #  train_model         |
-    #       ↓              ↓
-    # notify_success    notify_skipped
+    #       ↓                    ↓
+    #  [ml_pipeline]        skip_training
+    #    make_dataset             ↓
+    #       ↓                    |
+    #    build_features          |
+    #       ↓                    |
+    #    train_model             |
+    #       ↓                    ↓
+    #              notify
     #
-    var = sense_new_data >> load_from_hf >> check_data_changed
-    var_1 = check_data_changed >> make_dataset >> build_features >> train_model >> notify_success
-    var_2 = check_data_changed >> skip_training >> notify_skipped
+    sense_new_data >> load_from_hf >> check_data_changed
+    check_data_changed >> ml_group >> notify
+    check_data_changed >> skip_training >> notify
