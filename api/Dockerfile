@@ -12,15 +12,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Installer shared
 COPY shared/ ./shared/
-RUN pip install --no-cache-dir ./shared/
+RUN pip install --no-cache-dir -e ./shared/
 
 # Puis les dépendances API
 COPY api/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY api/ ./api/
-COPY shared/ ./shared/
-RUN pip install --no-cache-dir -e ./shared/ && pip install --no-cache-dir -e './api/[dev]'
+#COPY shared/ ./shared/
+RUN #pip install --no-cache-dir -e ./shared/ && pip install --no-cache-dir -e './api/[dev]'
 
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
 USER appuser
