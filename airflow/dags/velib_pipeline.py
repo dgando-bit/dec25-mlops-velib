@@ -20,7 +20,7 @@ log = logging.getLogger(__name__)
 
 SNAPSHOT_LOG = Path("/app/data/raw/.snapshots.log")
 HASH_STATE_FILE = Path("/app/data/raw/.last_dag_hash")
-ALERT_EMAIL = os.getenv("AIRFLOW_ALERT_EMAIL", "mlops@example.com")
+ALERT_EMAIL = os.getenv("AIRFLOW_ALERT_EMAIL", "mlops@yopmail.com")
 
 DEFAULT_ARGS = {
     "owner": "mlops",
@@ -238,7 +238,7 @@ with DAG(
     load_from_hf = PythonOperator(
         task_id="load_from_hf",
         python_callable=_load_from_hf,
-        execution_timeout=timedelta(hours=1),
+        execution_timeout=timedelta(hours=2),
         on_failure_callback=on_failure_callback,
     )
 
