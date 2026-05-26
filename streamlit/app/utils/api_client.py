@@ -149,7 +149,7 @@ def hf_dataset_commits() -> tuple[bool, list]:
     from datetime import datetime
 
     all_dates = []
-    page = 1
+    page = 0
     limit = 1000
     max_pages = 20
 

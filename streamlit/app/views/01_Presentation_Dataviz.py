@@ -340,10 +340,14 @@ def render_weather_impact(df: pd.DataFrame) -> go.Figure:
 
 
 def render_temp_anomaly(df: pd.DataFrame) -> go.Figure:
-    df_local = df.copy()
-    df_local["month"] = df_local["datetime"].dt.month
-    monthly_mean = df_local.groupby("month")["apparent_temperature"].transform("mean")
-    df_local["temp_anom"] = df_local["apparent_temperature"] - monthly_mean
+    month = df["datetime"].dt.month
+    monthly_mean = df.groupby(month)["apparent_temperature"].transform("mean")
+    temp_anom = df["apparent_temperature"] - monthly_mean
+
+    # Pré-agrégation serveur : 60 bins → 60 valeurs envoyées au browser (vs 11M+)
+    counts, edges = np.histogram(temp_anom, bins=60)
+    bin_centers = (edges[:-1] + edges[1:]) / 2
+
     fig = make_subplots(
         rows=1, cols=2,
         subplot_titles=(
@@ -353,8 +357,8 @@ def render_temp_anomaly(df: pd.DataFrame) -> go.Figure:
         horizontal_spacing=0.10,
     )
     fig.add_trace(
-        go.Histogram(
-            x=df_local["temp_anom"], nbinsx=60,
+        go.Bar(
+            x=bin_centers, y=counts,
             marker=dict(color=COLORS["info"], line=dict(color="white", width=0.3)),
             hovertemplate="Anomalie: %{x:.1f}°C<br>Fréquence: %{y:,}<extra></extra>",
             showlegend=False,
@@ -364,10 +368,12 @@ def render_temp_anomaly(df: pd.DataFrame) -> go.Figure:
     fig.add_vline(x=0, line=dict(color=COLORS["danger"], dash="dash", width=2),
                   annotation_text="0 = normale du mois", annotation_position="top",
                   row=1, col=1)
-    sample = df_local.sample(min(8000, len(df_local)), random_state=42)
+    sample_idx = np.random.default_rng(42).choice(len(df), size=min(8000, len(df)), replace=False)
+    sample = df.iloc[sample_idx]
+    sample_anom = temp_anom.iloc[sample_idx]
     fig.add_trace(
         go.Scattergl(
-            x=sample["temp_anom"], y=sample["taux"], mode="markers",
+            x=sample_anom, y=sample["taux"], mode="markers",
             marker=dict(size=4, color=COLORS["info"], opacity=0.25, line=dict(width=0)),
             hovertemplate="Anomalie: %{x:.1f}°C<br>Taux: %{y:.1f}%<extra></extra>",
             showlegend=False,

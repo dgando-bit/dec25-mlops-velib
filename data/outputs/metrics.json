@@ -1,12 +1,12 @@
 {
-  "run_id": "9b5a5dbb7fa54fb085c74447aec19ea7",
+  "run_id": "c1be13cd974c4fa0bc8010e894fd29be",
   "model_name": "velib_fill_rate_predictor",
-  "timestamp": "2026-05-22T07:36:02+00:00",
-  "residual_mae": 7.184814455027216,
-  "residual_rmse": 10.717714678120842,
-  "residual_r2": 0.7840798278358747,
-  "taux_mae": 7.1801589989680865,
-  "taux_rmse": 10.715810148381006,
-  "taux_r2": 0.8706839025395691,
-  "taux_mape_pct": 31.81509262269302
+  "timestamp": "2026-05-26T07:29:24+00:00",
+  "residual_mae": 7.300724006533795,
+  "residual_rmse": 10.678085349700966,
+  "residual_r2": 0.7738431779091882,
+  "taux_mae": 7.297194445144295,
+  "taux_rmse": 10.67649670107184,
+  "taux_r2": 0.8725354606411946,
+  "taux_mape_pct": 33.676595795031474
 }

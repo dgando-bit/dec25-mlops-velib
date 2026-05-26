@@ -33,7 +33,7 @@ SERVICES := mlflow-db mlflow-server ml_training jupyter-service api
         train \
         clean clean-volumes clean-all \
         shell-api shell-ml shell-jupyter shell-airflow \
-        check-env setup \
+        check-env setup setup-permissions \
         dvc-pull dvc-push dvc-status dvc-add pipeline \
         airflow-init airflow-up airflow-down airflow-logs airflow-trigger \
         streamlit-up streamlit-down logs-streamlit shell-streamlit \
@@ -179,7 +179,12 @@ build-nocache: check-env
 # DÉMARRAGE
 # =============================================================================
 
-up: check-env
+setup-permissions:
+	@mkdir -p mlflow/artifacts airflow/logs
+	@sudo chown -R 1000:1000 mlflow/artifacts
+	@sudo chown -R 50000:0 airflow/logs
+
+up: check-env setup-permissions
 	@echo "$(CYAN)→ Démarrage de tous les services...$(RESET)"
 	$(COMPOSE) -f $(COMPOSE_FILE) up -d
 	@echo "$(CYAN)→ Rechargement Nginx (résolution DNS upstreams)...$(RESET)"
@@ -391,7 +396,7 @@ dvc-add:
 	@echo "$(GREEN)✓ Fichiers trackés$(RESET)"
 	@echo "$(YELLOW)  → N'oublie pas : git add data/raw.dvc data/processed.dvc && git commit$(RESET)"
 
-pipeline:
+pipeline: setup-permissions
 	@echo "$(CYAN)→ Exécution du pipeline DVC...$(RESET)"
 	$(COMPOSE) -f $(COMPOSE_FILE) run --rm ml_training dvc repro
 	@echo "$(CYAN)→ Rechargement du modèle dans l'API...$(RESET)"
