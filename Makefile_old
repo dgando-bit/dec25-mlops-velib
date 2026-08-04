@@ -36,7 +36,6 @@ SERVICES := mlflow-db mlflow-server ml_training jupyter-service api
         check-env setup setup-permissions \
         dvc-pull dvc-push dvc-status dvc-add pipeline \
         airflow-init airflow-up airflow-down airflow-logs airflow-trigger \
-        airflow-tail-logs \
         streamlit-up streamlit-down logs-streamlit shell-streamlit \
         mlflow-reset-experiment
 
@@ -148,7 +147,7 @@ check-env:
 setup: check-env
 	@echo "$(CYAN)→ Création des dossiers nécessaires...$(RESET)"
 	@mkdir -p data/raw data/processed data/interim ml/notebooks
-	@mkdir -p airflow/dags airflow/plugins
+	@mkdir -p airflow/dags airflow/logs airflow/plugins
 	@if [ -d mlflow/artifacts ] && [ ! -w mlflow/artifacts ]; then \
 		sudo chown $$(id -u):$$(id -g) mlflow/artifacts; \
 	fi
@@ -181,8 +180,9 @@ build-nocache: check-env
 # =============================================================================
 
 setup-permissions:
-	@mkdir -p mlflow/artifacts
-	@[ -w mlflow/artifacts ] || sudo chown -R 1000:1000 mlflow/artifacts
+	@mkdir -p mlflow/artifacts airflow/logs
+	@sudo chown -R 1000:1000 mlflow/artifacts
+	@sudo chown -R 50000:0 airflow/logs
 
 up: check-env setup-permissions
 	@echo "$(CYAN)→ Démarrage de tous les services...$(RESET)"
@@ -480,9 +480,6 @@ airflow-trigger: check-env
 
 shell-airflow:
 	$(COMPOSE) -f $(COMPOSE_FILE) exec airflow-scheduler /bin/bash
-
-airflow-tail-logs:
-	$(COMPOSE) -f $(COMPOSE_FILE) exec airflow-scheduler bash -c "tail -f /opt/airflow/logs/scheduler/latest/*.log"
 
 # =============================================================================
 # STREAMLIT
